@@ -34,8 +34,11 @@
 #
 #   --artifacts DIR   a real build output to publish (recommended: it is the
 #                     artifact set a router would actually install)
+#   --apk-bin PATH    apk-tools 3 with mkndx/adbdump (default $FEED_APK_BIN)
 #   --arch TUPPLE     ARCH_PACKAGES; required with --artifacts, and asserted
 #                     against the index's own Architecture field
+#   --port N          TLS port (default 0: the OS picks a free one and the
+#                     server reports it, so a stale server cannot squat it)
 #   --workdir DIR     keep the work tree here (default: a temp dir)
 #   --keep            do not delete the work tree, and leave the server up
 #   (no --artifacts)  publish a tiny `apk mkpkg` fixture instead, so the gate
@@ -46,7 +49,7 @@ set -euo pipefail
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 ARTIFACTS=""
 APK_BIN=${FEED_APK_BIN:-}
-PORT=18443
+PORT=0   # 0 = the OS picks a free port and the server reports it
 ARCH=""
 FIXTURE=0
 KEEP=0
@@ -137,10 +140,25 @@ sed 's/^/   /' "$WORK/build.sha256"
 	--certdir "$WORK/tls" >"$LOG/server.log" 2>&1 &
 SERVER_PID=$!
 trap '[ "$KEEP" = 1 ] || { kill "$SERVER_PID" 2>/dev/null || true; rm -rf "$WORK"; }; true' EXIT
-for _ in $(seq 1 50); do
-	curl -sk --max-time 2 "https://localhost:$PORT/" -o /dev/null && break
-	sleep 0.1
+# Wait for the bind, and take the port the server REPORTS: with --port 0 the OS
+# chooses. Polling with curl instead would happily talk to a stale server that
+# already held the port, and the real failure (HTTP 000) would look like a bug
+# in the publish path rather than a squatted port.
+for _ in $(seq 1 200); do
+	grep -q '^serving ' "$LOG/server.log" 2>/dev/null && break
+	kill -0 "$SERVER_PID" 2>/dev/null || {
+		echo "FAIL: the HTTPS server is not running:" >&2
+		sed 's/^/   /' "$LOG/server.log" >&2
+		exit 1
+	}
+	sleep 0.05
 done
+PORT=$(sed -n 's|^serving .* at https://[^:]*:\([0-9]\{1,\}\)$|\1|p' "$LOG/server.log" | head -1)
+[ -n "$PORT" ] || {
+	echo "FAIL: the HTTPS server never reported a port:" >&2
+	sed 's/^/   /' "$LOG/server.log" >&2
+	exit 1
+}
 CA="$WORK/tls/ca.pem"
 [ -f "$CA" ] || { echo "FAIL: the HTTPS server did not produce a CA" >&2; exit 1; }
 echo "== https server: https://localhost:$PORT (CA $CA)"

@@ -176,7 +176,11 @@ def main() -> int:
     httpd = http.server.ThreadingHTTPServer((args.bind, args.port), handler)
     httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
 
-    sys.stderr.write("serving %s at https://%s:%d\n" % (root, args.bind, args.port))
+    # Report the port ACTUALLY bound: with --port 0 the OS picks a free one, so
+    # a caller can never collide with a stale server (a squatter used to make
+    # the fetch-back assertion fail with HTTP 000 and look like a code bug).
+    port = httpd.socket.getsockname()[1]
+    sys.stderr.write("serving %s at https://%s:%d\n" % (root, args.bind, port))
     sys.stderr.write("CA certificate: %s\n" % ca)
     sys.stderr.flush()
     try:
