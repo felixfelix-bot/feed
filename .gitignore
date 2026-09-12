@@ -1,0 +1,4 @@
+# Extracted host tooling (apk-tools from the SDK) — reproducible, never committed
+.feed-tools/
+# Generated feed trees, if someone points one here
+feed-tree/
