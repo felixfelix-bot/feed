@@ -38,11 +38,13 @@ umask 077
 OUT=""
 NAME=""
 FORCE=0
+TYPE=ec
 
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--out)  OUT=${2:?}; shift 2 ;;
 		--name) NAME=${2:?}; shift 2 ;;
+		--type) TYPE=${2:?}; shift 2 ;;
 		--force) FORCE=1; shift ;;
 		-h|--help) sed -n '3,32p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 		*) echo "unknown argument: $1" >&2; exit 1 ;;
@@ -52,16 +54,36 @@ done
 [ -n "$OUT" ] || { echo "FAIL: --out DIR is required" >&2; exit 1; }
 [ -n "$NAME" ] || { echo "FAIL: --name is required (e.g. tollgate-testing)" >&2; exit 1; }
 case "$NAME" in */*|*..*|"") echo "FAIL: --name must be a plain file name" >&2; exit 1 ;; esac
+case "$TYPE" in ec|usign) ;; *) echo "FAIL: --type must be ec (apk) or usign (opkg)" >&2; exit 1 ;; esac
 
 mkdir -p "$OUT/pub"
 chmod 700 "$OUT"
 OUT=$(cd "$OUT" && pwd)
 SEC="$OUT/$NAME.sec"
-PEM="$OUT/pub/$NAME.pem"
+if [ "$TYPE" = ec ]; then PEM="$OUT/pub/$NAME.pem"; else PUB="$OUT/pub/$NAME.pub"; fi
 
 if [ -e "$SEC" ] && [ "$FORCE" != 1 ]; then
 	echo "FAIL: $SEC exists — refusing to overwrite a signing key. Pass --force only if you intend to ROTATE it (routers would then need the new .pem)." >&2
 	exit 1
+fi
+
+if [ "$TYPE" = usign ]; then
+	# opkg/usign keypair. Stock 24.10/23.05 RELEASE images enable signature
+	# checking ('option check_signature' in /etc/opkg.conf), so an unsigned
+	# opkg feed fails 'opkg update' there — see docs/feed-index-publishing.md.
+	USIGN=${FEED_USIGN:-usign}
+	{ [ -x "$USIGN" ] || command -v "$USIGN" >/dev/null 2>&1; } || { echo "FAIL: usign not found (install it, or set FEED_USIGN)" >&2; exit 1; }
+	"$USIGN" -G -s "$SEC" -p "$PUB"
+	chmod 600 "$SEC"; chmod 644 "$PUB"
+	fingerprint=$("$USIGN" -F -p "$PUB")
+	echo "key type    : usign (opkg)"
+	echo "private key : $SEC   (chmod 600 — NEVER commit, never publish)"
+	echo "public key  : $PUB"
+	echo "fingerprint : $fingerprint  (the router installs it as /etc/opkg/keys/$fingerprint)"
+	echo "runtime flags: --sign-key $SEC --keys-dir $OUT/pub"
+	echo "router-side install (one documented curl + opkg-key):"
+	echo "  curl -fsSL <BASE_URL>/keys/$NAME.pub -o /tmp/$NAME.pub && opkg-key add /tmp/$NAME.pub"
+	exit 0
 fi
 
 openssl ecparam -name prime256v1 -genkey -noout -out "$SEC"

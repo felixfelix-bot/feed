@@ -44,6 +44,7 @@ set -euo pipefail
 
 PROG=${0##*/}
 APK_BIN=${FEED_APK_BIN:-}
+USIGN_BIN=${FEED_USIGN:-}
 MAX_SECONDS=${FEED_MAX_PUBLISH_SECONDS:-300}
 
 FORMAT=apk
@@ -164,6 +165,7 @@ while [ $# -gt 0 ]; do
 		--keys-dir)     KEYS_DIR=${2:?}; shift 2 ;;
 		--description)  DESCRIPTION=${2:?}; shift 2 ;;
 		--apk-bin)      APK_BIN=${2:?}; shift 2 ;;
+		--usign)        USIGN_BIN=${2:?}; shift 2 ;;
 		--ipkg-index)   IPKG_INDEX=${2:?}; shift 2 ;;
 		--keep)         KEEP=${2:?}; shift 2 ;;
 		--publish-target) PUBLISH_TARGET=${2:?}; shift 2 ;;
@@ -373,7 +375,10 @@ generate_apk_index() {
 generate_opkg_index() {
 	[ -n "$IPKG_INDEX" ] || IPKG_INDEX=${FEED_IPKG_INDEX:-}
 	[ -n "$IPKG_INDEX" ] || die "--ipkg-index is required for --format opkg (scripts/ipkg-make-index.sh from the matching OpenWrt SDK)"
-	[ -x "$IPKG_INDEX" ] || die "ipkg index script not executable: $IPKG_INDEX"
+	# The SDK's ipkg-make-index.sh is a *bash* script (it uses [[ ]]) whose shebang
+	# is `#!/usr/bin/env bash`; run it through bash explicitly so the exec bit is
+	# not required on a fetched copy.
+	[ -f "$IPKG_INDEX" ] || die "ipkg index script not found: $IPKG_INDEX"
 	local n
 	n=$(ls -1 "$DEST"/*.ipk 2>/dev/null | wc -l)
 	[ "$n" -gt 0 ] || die "no .ipk files in $DEST — refusing to publish an empty index"
@@ -381,14 +386,71 @@ generate_opkg_index() {
 		note "would run: $IPKG_INDEX $DEST > Packages.manifest && filter && gzip -9nc"
 		return 0
 	fi
-	(cd "$DEST" && "$IPKG_INDEX" .) > "$DEST/Packages.manifest.tmp" 2>/dev/null
+	# ipkg-make-index.sh hashes with "$MKHASH sha256 <file>". In the OpenWrt build
+	# system MKHASH is tools/mkhash (a two-argument wrapper); plain `sha256sum`
+	# does NOT work there (it would see two file arguments). Use mkhash when it
+	# exists, otherwise an equivalent shim.
+	local mkhash_cmd=${MKHASH:-}
+	if [ -z "$mkhash_cmd" ]; then
+		if command -v mkhash >/dev/null 2>&1; then
+			mkhash_cmd=mkhash
+		else
+			cat > "$TMP/mkhash-shim" <<'SH'
+#!/bin/sh
+# mkhash-compatible shim: "mkhash <alg> <file>..." -> the bare digest.
+# NOTE: OpenWrt's mkhash prints ONLY the hash; `sha256sum` prints "<hash>  <file>",
+# and the second field contains a "/" which breaks the sed expression inside
+# ipkg-make-index.sh. Strip it.
+shift
+exec sha256sum "$@" | cut -d' ' -f1
+SH
+			chmod +x "$TMP/mkhash-shim"
+			mkhash_cmd="$TMP/mkhash-shim"
+		fi
+	fi
+	if ! (cd "$DEST" && MKHASH="$mkhash_cmd" bash "$IPKG_INDEX" .) \
+			> "$DEST/Packages.manifest.tmp" 2> "$TMP/ipkg.err"; then
+		sed 's/^/  ipkg-make-index: /' "$TMP/ipkg.err" >&2
+		die "ipkg-make-index.sh failed (see above)"
+	fi
 	[ -s "$DEST/Packages.manifest.tmp" ] || die "ipkg-make-index.sh produced no output"
 	# Fields stock opkg's package listings do not want.
 	grep -vE '^(Maintainer|LicenseFiles|Source|SourceName|Require|SourceDateEpoch)' \
 		"$DEST/Packages.manifest.tmp" > "$DEST/Packages.tmp" || true
 	[ -s "$DEST/Packages.tmp" ] || die "field filtering emptied Packages"
+	# usign bug workaround, exactly as OpenWrt's package/Makefile does it: pad
+	# the list with two newlines when (64+size) % 128 is 110 or 111.
+	pad=$(( (64 + $(stat -c %s "$DEST/Packages.tmp")) % 128 ))
+	if [ "$pad" -eq 110 ] || [ "$pad" -eq 111 ]; then
+		printf '\n\n' >> "$DEST/Packages.tmp"
+		note "applied the usign padding workaround (64+size mod 128 = $pad)"
+	fi
+	if [ "$UNSIGNED" = 1 ]; then
+		warn "building an UNSIGNED opkg index. MEASURED: stock 24.10/23.05 RELEASE images put 'option check_signature' in /etc/opkg.conf, and opkg then aborts on it ('Signature file download failed'). Only use this for the negative test case."
+	else
+		[ -n "$SIGN_KEY" ] || die "--sign-key (a usign secret key) is required for --format opkg: an unsigned list makes 'opkg update' fail on stock 24.10/23.05 release images (see docs/feed-index-publishing.md). Use --unsigned only for the negative case."
+		[ -f "$SIGN_KEY" ] || die "sign key not found: $SIGN_KEY"
+		[ -n "$USIGN_BIN" ] || USIGN_BIN=$(command -v usign || true)
+		[ -n "$USIGN_BIN" ] || die "usign not found: install it or pass --usign/ FEED_USIGN"
+		SIGN_KEY_ABS=$(cd "$(dirname "$SIGN_KEY")" && pwd)/$(basename "$SIGN_KEY")
+		mkdir -p "$TMP/opkg"
+		cp -f "$DEST/Packages.tmp" "$TMP/opkg/Packages"
+		"$USIGN_BIN" -S -m "$TMP/opkg/Packages" -s "$SIGN_KEY_ABS" >&2 \
+			|| die "usign -S failed"
+		[ -f "$TMP/opkg/Packages.sig" ] || die "usign produced no Packages.sig"
+		mv -f "$TMP/opkg/Packages.sig" "$DEST/Packages.sig.tmp"
+		# key id = the usign fingerprint of the published public key (this is
+		# also the file name the router installs it under: /etc/opkg/keys/<fp>)
+		SIG_ID=""
+		for p in "$KEYS_DIR_ABS"/*.pub; do
+			[ -f "$p" ] || continue
+			SIG_ID=$("$USIGN_BIN" -F -p "$p" 2>/dev/null || true)
+			[ -n "$SIG_ID" ] && break
+		done
+		note "opkg index signed with usign (Packages.sig, $(stat -c %s "$DEST/Packages.sig.tmp") bytes)"
+	fi
 	gzip -9nc "$DEST/Packages.tmp" > "$DEST/Packages.gz.tmp"
-	note "opkg index built: Packages.tmp ($(stat -c %s "$DEST/Packages.tmp") bytes) + Packages.gz.tmp (unsigned, per the memo)"
+	note "opkg index built: Packages.tmp ($(stat -c %s "$DEST/Packages.tmp") bytes) + Packages.gz.tmp$( [ "$UNSIGNED" = 1 ] && echo ' (unsigned)' || echo ' + Packages.sig.tmp' )"
 }
 
 # --------------------------------------------------------- atomic swap -------
@@ -405,14 +467,26 @@ atomic_swap_index() {
 			mv -f "$DEST/Packages.tmp" "$DEST/Packages"
 			mv -f "$DEST/Packages.gz.tmp" "$DEST/Packages.gz"
 			mv -f "$DEST/Packages.manifest.tmp" "$DEST/Packages.manifest"
-			note "Packages / Packages.gz / Packages.manifest swapped in by atomic rename"
+			[ -f "$DEST/Packages.sig.tmp" ] && mv -f "$DEST/Packages.sig.tmp" "$DEST/Packages.sig"
+			note "Packages / Packages.gz / Packages.manifest$( [ -f "$DEST/Packages.sig" ] && echo ' / Packages.sig' ) swapped in by atomic rename"
 			;;
 	esac
 }
 
 # --------------------------------------------------------- signature check ---
 assert_signed() {
-	[ "$FORMAT" = apk ] || return 0
+	if [ "$FORMAT" = opkg ]; then
+		[ "$DRY_RUN" = 1 ] && return 0
+		[ "$UNSIGNED" = 1 ] && { note "unsigned opkg index (negative case) — signature check skipped by design"; return 0; }
+		[ -f "$DEST/Packages.sig" ] || die "no Packages.sig: opkg would refuse this list on a stock 24.10/23.05 image"
+		for p in "$KEYS_DIR_ABS"/*.pub; do
+			[ -f "$p" ] || continue
+			"$USIGN_BIN" -V -m "$DEST/Packages" -p "$p" >/dev/null 2>&1 \
+				|| die "Packages.sig does not verify with the published key $p"
+		done
+		note "Packages.sig verified with the published usign key (fingerprint ${SIG_ID:-unknown})"
+		return 0
+	fi
 	[ "$DRY_RUN" = 1 ] && { note "would verify the index signature with $KEYS_DIR_ABS"; return 0; }
 	if [ "$UNSIGNED" = 1 ]; then
 		note "unsigned index (negative case) — signature check skipped by design"
@@ -466,7 +540,7 @@ publish_index() {
 	local -a files=()
 	case "$FORMAT" in
 		apk) files=("packages.adb") ;;
-		opkg) files=("Packages" "Packages.gz" "Packages.manifest") ;;
+		opkg) files=("Packages" "Packages.gz" "Packages.manifest" "Packages.sig") ;;
 	esac
 	local f
 	for f in "${files[@]}"; do
@@ -481,8 +555,8 @@ publish_index() {
 sha256sums_file() {
 	[ "$FORMAT" = opkg ] || return 0
 	[ "$DRY_RUN" = 1 ] && return 0
-	(cd "$DEST" && sha256sum ./*.ipk Packages Packages.gz > sha256sums)
-	note "wrote sha256sums (opkg does not verify signatures; see the memo)"
+	(cd "$DEST" && sha256sum ./*.ipk Packages Packages.gz $( [ -f Packages.sig ] && echo Packages.sig ) > sha256sums)
+	note "wrote sha256sums (opkg does not verify package payloads; see the memo)"
 }
 
 verify_live() {
@@ -539,7 +613,21 @@ if [ "$FORMAT" = apk ]; then
 	ls -1 "$KEYS_DIR_ABS"/*.pem >/dev/null 2>&1 || die "keys dir has no *.pem public key: $KEYS_DIR_ABS"
 	resolve_apk
 else
-	KEYS_DIR_ABS=${KEYS_DIR_ABS:-}
+	# opkg path: the published key is a usign public key (keys/<name>.pub), and
+	# stock 24.10/23.05 RELEASE images enable signature checking, so signing is
+	# the default here too (--unsigned is the documented negative case).
+	if [ "$UNSIGNED" = 1 ]; then
+		KEYS_DIR_ABS=${KEYS_DIR_ABS:-}
+	else
+		[ -n "$KEYS_DIR" ] || die "--keys-dir is required for --format opkg (the usign public key the router installs via opkg-key)"
+		[ -d "$KEYS_DIR" ] || die "keys dir not found: $KEYS_DIR"
+		KEYS_DIR_ABS=$(cd "$KEYS_DIR" && pwd)
+		bad=$(find "$KEYS_DIR_ABS" -maxdepth 1 -type f ! -name '*.pub' -printf '%f\n' 2>/dev/null || true)
+		[ -z "$bad" ] || die "keys dir contains non-.pub files ($(printf '%s ' $bad)) — for opkg it must hold ONLY usign public keys"
+		ls -1 "$KEYS_DIR_ABS"/*.pub >/dev/null 2>&1 || die "keys dir has no *.pub usign public key: $KEYS_DIR_ABS"
+		[ -n "$USIGN_BIN" ] || USIGN_BIN=$(command -v usign || true)
+		[ -n "$USIGN_BIN" ] || die "usign not found: install it or pass --usign / FEED_USIGN"
+	fi
 fi
 
 phase manifest
@@ -578,17 +666,18 @@ if [ "$DRY_RUN" != 1 ] && [ -n "$KEYS_DIR_ABS" ]; then
 	# installed it. Rotate deliberately (new name, or feed-keygen --force plus
 	# a documented re-install step), do not let a publish do it by accident.
 	kf="" name="" dest=""
-	for kf in "$KEYS_DIR_ABS"/*.pem; do
+	case "$FORMAT" in apk) keyglob='*.pem' ;; opkg) keyglob='*.pub' ;; esac
+	for kf in "$KEYS_DIR_ABS"/$keyglob; do
 		[ -f "$kf" ] || continue
 		name=$(basename "$kf"); dest="$TREE_ABS/keys/$name"
 		if [ -f "$dest" ] && [ "$(sha256sum "$kf" | cut -d' ' -f1)" != "$(sha256sum "$dest" | cut -d' ' -f1)" ]; then
 			die "keys/$name already exists in the tree with DIFFERENT key material. Overwriting it would silently break the trust chain for every router that installed the old key. Use a new key name (or a documented rotation)."
 		fi
 	done
-	cp -f "$KEYS_DIR_ABS"/*.pem "$TREE_ABS/keys/"
+	cp -f "$KEYS_DIR_ABS"/$keyglob "$TREE_ABS/keys/"
 	note "public key(s) copied to $TREE_ABS/keys/"
 	if [ -n "$PUBLISH_TARGET" ]; then
-		rsync -a --delay-updates --include='*/' --include='*.pem' --exclude='*' "$TREE_ABS/keys/" "$PUBLISH_TARGET/keys/" >&2
+		rsync -a --delay-updates --include='*/' --include="$keyglob" --exclude='*' "$TREE_ABS/keys/" "$PUBLISH_TARGET/keys/" >&2
 		note "public key(s) published to $PUBLISH_TARGET/keys/"
 	fi
 fi
