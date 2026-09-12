@@ -81,6 +81,13 @@ if [ -z "$APK_BIN" ]; then
 fi
 [ -x "$APK_BIN" ] || { echo "FAIL: --apk-bin (apk-tools 3 with mkndx) is required" >&2; exit 1; }
 
+# Explicit dependency preflight: this gate is meant to run on a bare CI runner,
+# so say which tool is missing instead of failing somewhere deep in a pipe.
+for tool in python3 openssl rsync curl sha256sum awk sort xargs; do
+	command -v "$tool" >/dev/null 2>&1 \
+		|| { echo "FAIL: '$tool' is required by this test and is not on PATH" >&2; exit 1; }
+done
+
 PASS=0
 FAIL=0
 ok()   { printf 'PASS  %s\n' "$*"; PASS=$((PASS + 1)); }

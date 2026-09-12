@@ -85,35 +85,30 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, directory=None, **kwargs):
         super().__init__(*args, directory=directory, **kwargs)
 
-    def _send_headers(self, code, path, extra=None):
-        self.send_response(code)
-        self.send_header("Cache-Control", cache_control_for(path))
-        if cache_control_for(path) == NO_CACHE:
-            self.send_header("Pragma", "no-cache")
-        self.send_header("Server", self.server_version)
-        for k, v in (extra or {}).items():
-            self.send_header(k, v)
-        self.end_headers()
-
     def send_head(self):
         path = self.translate_path(self.path)
         # No directory listings: an index directory listing invites hand-downloads
         # that skip the trust chain (same rail as the Caddy example).
         if os.path.isdir(path):
-            self._send_headers(404, self.path)
+            self.send_response(404)
+            self.end_headers()
             self.wfile.write(b"directory listings are disabled\n")
             return None
         return super().send_head()
 
-    def end_headers(self):
-        # SimpleHTTPRequestHandler sends its own headers first; override after.
-        if not self._headers_buffer_has_cache():
-            self.send_header("Cache-Control", cache_control_for(self.path))
-        super().end_headers()
+    def _write_cache_headers(self):
+        cc = cache_control_for(self.path)
+        self.send_header("Cache-Control", cc)
+        if cc == NO_CACHE:
+            self.send_header("Pragma", "no-cache")
 
-    def _headers_buffer_has_cache(self):
-        buf = getattr(self, "_headers_buffer", None) or []
-        return any(b"Cache-Control" in h for h in buf)
+    def end_headers(self):
+        # Every response goes through here — 200 for a file, the 404 for a
+        # directory, send_error() paths, and HEAD. SimpleHTTPRequestHandler never
+        # sets Cache-Control itself, so adding it unconditionally is safe and is
+        # the only version that cannot miss a path.
+        self._write_cache_headers()
+        super().end_headers()
 
     def log_message(self, format, *args):  # noqa: A002 — base class signature
         # One line per request, including the cache policy actually sent.

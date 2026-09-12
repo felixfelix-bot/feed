@@ -6,7 +6,7 @@ recovering a release:
 | path | what it is |
 |---|---|
 | `<channel>-<line>-<arch>.json` | the **publish record** written by `scripts/feed-publish.sh --record`: index sha256, signing key id, every package's sha256/bytes, and the timestamp |
-| `tree/` | a **committed snapshot of the generated feed tree** — the public key and the signed index, exactly as published, minus the package payloads |
+| `tree/` | a **committed snapshot of the generated feed tree** — the public key and the signed index, exactly as published, minus the package payloads. Read `tree/REHEARSAL.md` first: it is test output, not a live channel |
 | `tree/manifest.sha256` | the BUILD job's manifest for the payloads the snapshot references |
 
 ## Why commit a tree at all

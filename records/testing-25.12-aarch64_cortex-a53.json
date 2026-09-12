@@ -5,9 +5,9 @@
   "format": "apk",
   "index": "aarch64_cortex-a53/packages.adb",
   "index_bytes": 625,
-  "index_sha256": "f1f86733f7d16e0f24992abe90fe27ae6b95fdcfd29b9322b1bdc6be2601148b",
-  "signature": {"alg": "ecdsa-p256-sha512", "key_id": "61ab2b3d65a21dd1d8edbe14b2a195e6", "signed": true},
-  "published_at": "2026-09-12T22:30:58Z",
+  "index_sha256": "4481ae77a8fdc99b8c1e7e099576206f6a428ab681617f4679d37732c7b2f5e1",
+  "signature": {"alg": "ecdsa-p256-sha512", "key_id": "db93f4729ce9f2995daff30772e5defc", "signed": true},
+  "published_at": "2026-09-12T22:55:07Z",
   "packages": [
     {"filename": "tollgate-wrt-0.6.0_alpha1-r1.apk", "sha256": "4e0f865419ab1cc12e25f9d444101f5cc4dd8ca995783d9b9665d3fc3fdd98f1", "bytes": 7657333}
   ]

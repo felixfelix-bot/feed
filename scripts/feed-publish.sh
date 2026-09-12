@@ -529,14 +529,19 @@ assert_arch() {
 	local declared="" bad="" a
 	case "$FORMAT" in
 		apk)
+			# Check existence, then assign in a SEPARATE statement: inside
+			# `local x=$(cmd)` a failing command does not trip `set -e`, so a
+			# missing/again-unbuilt index would silently read as empty.
+			[ -f "$DEST/packages.adb" ] || die "no packages.adb in $DEST — nothing to check the Architecture of"
 			declared=$("$APK_BIN" --root "$DEST" --keys-dir "$KEYS_DIR_ABS" adbdump "$DEST/packages.adb" 2>/dev/null \
 				| awk '/^    arch: /{print $2}' | LC_ALL=C sort -u)
 			;;
 		opkg)
+			[ -f "$DEST/Packages.gz" ] || die "no Packages.gz in $DEST — nothing to check the Architecture of"
 			declared=$(zcat "$DEST/Packages.gz" 2>/dev/null | sed -n 's/^Architecture: *//p' | LC_ALL=C sort -u)
 			;;
 	esac
-	[ -n "$declared" ] || die "the index declares no Architecture at all"
+	[ -n "$declared" ] || die "the index declares no Architecture at all (did the index build fail?)"
 	for a in $declared; do
 		case "$a" in
 			"$ARCH"|all|noarch) ;;
