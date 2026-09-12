@@ -166,6 +166,19 @@ Notes learned the hard way:
 - [x] `scripts/sync-from-upstream.sh` re-pins version/hash and re-vendors files/
 - [x] Prove the build on a pinned 25.12 SDK (`mediatek-filogic`) and record raw output
 - [x] Rewrite `README.md` (honest supported matrix) and this plan
+- [x] Runtime feed: index generate + sign + atomic publish (`scripts/feed-publish.sh`,
+      `scripts/feed-verify.sh`, `scripts/feed-manifest.sh`, `scripts/feed-keygen.sh`,
+      `scripts/get-host-apk-tools.sh`) — see `docs/feed-index-publishing.md`
+- [x] Trust gate on a real 25.12 rootfs: unsigned index fails, signed succeeds,
+      missing/wrong key fails, `apk add` installs (`tests/apk-index-trust-test.sh`, 5/5)
+- [x] Publish refusal rules: manifest hash mismatch, missing artifact, unversioned
+      name, re-cut, private key in the keys dir, unsigned opt-in, key rotation,
+      retention, dry-run (`tests/feed-publish-test.sh`, 12/12)
+- [x] opkg `Packages.sig` signing with usign, proven on a real 24.10.8 rootfs —
+      and the memo corrected: release images DO enable `check_signature`
+      (`tests/opkg-index-test.sh`, 3/3)
 - [ ] Run the same compile on the remaining matrix targets (x86-64, ramips-mt7621)
+- [ ] Publish the feed site itself (FEED-SERVE-PROVE: Caddy + ansible, headers)
+- [ ] Router-hardware install of the real package from the feed (RC-ACCEPTANCE)
 - [ ] _(future)_ exercise the built package on router hardware
 - [ ] _(future, operator-gated)_ lift `net/tollgate-wrt/` into `openwrt/packages`

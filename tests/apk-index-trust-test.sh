@@ -29,7 +29,7 @@ set -euo pipefail
 
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 APK_BIN=${FEED_APK_BIN:-}
-IMAGE=${FEED_TEST_IMAGE:-openwrt/rootfs:x86_64-25.12.5}
+IMAGE=${FEED_TEST_IMAGE:-openwrt/rootfs:x86_64-v25.12.4}
 KEEP=0
 
 while [ $# -gt 0 ]; do
