@@ -177,6 +177,19 @@ Notes learned the hard way:
 - [x] opkg `Packages.sig` signing with usign, proven on a real 24.10.8 rootfs —
       and the memo corrected: release images DO enable `check_signature`
       (`tests/opkg-index-test.sh`, 3/3)
+- [x] HTTPS publish gate with the production cache headers: publish → live
+      fetch-back → one-byte-corrupted package refused (exit 1) → restore →
+      no-rebuild proof (`tests/feed-https-publish-test.sh`, 7/7, against
+      `tests/feed-https-server.py` — no Caddy, no VPS needed)
+- [x] Architecture asserted at publish time from the index's own `arch:` field
+      (memo failure mode 3: otherwise a mismatch surfaces as "package not found"
+      on a tester's router and nothing earlier notices)
+- [x] Durability: per-channel publish record + a committed snapshot of the
+      generated tree (public key, signed index, build manifest) with the
+      one-command restore path in `records/`, and the payload-mirror gap stated
+      plainly rather than implied
+- [x] Cross-family cold review of this commit (reviewer family ≠ author family),
+      verdict + `reviewer_model` recorded on the kanban card
 - [ ] Run the same compile on the remaining matrix targets (x86-64, ramips-mt7621)
 - [ ] Publish the feed site itself (FEED-SERVE-PROVE: Caddy + ansible, headers)
 - [ ] Router-hardware install of the real package from the feed (RC-ACCEPTANCE)

@@ -517,6 +517,36 @@ index_listing() { # -> "<name>-<version>.apk" per line, straight from the index
 	fi
 }
 
+# ------------------------------------------------------------- arch check ----
+# Failure mode the memo calls out and nothing else here notices: an
+# Architecture mismatch (aarch64_cortex-a53 vs aarch64_generic) reaches the
+# router as "package not found". The package builds, the index signs, the
+# fetch-back assertion matches — the wrong arch only shows up when a tester
+# installs. The index is what the router reads, so that is where we assert,
+# against the arch the SDK reported (ARCH_PACKAGES).
+assert_arch() {
+	[ "$DRY_RUN" = 1 ] && { note "would assert the index Architecture matches --arch $ARCH"; return 0; }
+	local declared="" bad="" a
+	case "$FORMAT" in
+		apk)
+			declared=$("$APK_BIN" --root "$DEST" --keys-dir "$KEYS_DIR_ABS" adbdump "$DEST/packages.adb" 2>/dev/null \
+				| awk '/^    arch: /{print $2}' | LC_ALL=C sort -u)
+			;;
+		opkg)
+			declared=$(zcat "$DEST/Packages.gz" 2>/dev/null | sed -n 's/^Architecture: *//p' | LC_ALL=C sort -u)
+			;;
+	esac
+	[ -n "$declared" ] || die "the index declares no Architecture at all"
+	for a in $declared; do
+		case "$a" in
+			"$ARCH"|all|noarch) ;;
+			*) bad="$bad $a" ;;
+		esac
+	done
+	[ -z "$bad" ] || die "the index declares Architecture '$bad' but this publish is --arch $ARCH. Use the arch the SDK reports (ARCH_PACKAGES); apk/opkg reject a mismatch as 'package not found' and nothing earlier in this pipeline would have caught it."
+	note "index Architecture matches --arch $ARCH (declared: $(printf '%s' "$declared" | tr '\n' ' '))"
+}
+
 # ------------------------------------------------------------- publishing ----
 publish_packages() {
 	[ -n "$PUBLISH_TARGET" ] || { note "no --publish-target: tree only (local)"; return 0; }
@@ -649,6 +679,9 @@ generate_index
 
 phase "atomic-swap-index"
 atomic_swap_index
+
+phase "arch-check"
+assert_arch
 
 phase "signature-check"
 assert_signed

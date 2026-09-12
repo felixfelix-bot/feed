@@ -27,6 +27,8 @@ path, its own index and its own key; reverting a tester is deleting one line.
 | `scripts/feed-keygen.sh` | a human, once per channel | `--type ec` (apk) or `--type usign` (opkg) keypair |
 | `scripts/feed-publish.sh` | the publish job, or a human | verify → stage → prune → index → sign → atomic rename → publish packages-then-index → fetch-back |
 | `scripts/feed-verify.sh` | standalone too | re-fetches the live index and hash-checks every package it lists |
+| `tests/feed-https-server.py` | the HTTPS gate | serves a tree over TLS with the production cache headers (`no-cache` on indexes, `immutable` on packages/keys), no directory listings |
+| `tests/feed-https-publish-test.sh` | the HTTPS gate | publish → live fetch-back → corrupt-package negative → restore → no-rebuild proof, all over a real HTTPS URL |
 
 ## Hand-running a publish
 
@@ -104,6 +106,10 @@ memo at `~/tollgate-runtime-feed-memo.md`, the memo is corrected here.
 | 8 | **The memo is wrong about unsigned opkg feeds.** It says 24.10/23.05 ship `/etc/opkg.conf` with no `check_signature` "verified in source". The source tree is indeed clean, but release images are built with `CONFIG_SIGNATURE_CHECK` and `package/system/opkg/Makefile` then appends `option check_signature` to `/etc/opkg.conf`. On a real 24.10.8 rootfs the option is present, and a **bare** option enables the check: `opkg update` fails with `Signature file download failed` and exits 1. With a usign-signed `Packages.sig` + `opkg-key add`, update/install/run/remove all exit 0. | `tests/opkg-index-test.sh` (3/3) + the image's own `/etc/opkg.conf` |
 | 9 | `ipkg-make-index.sh` hashes through `$MKHASH <alg> <file>`. OpenWrt's `mkhash` prints only the digest; plain `sha256sum` prints `<hash>  <file>` and the second field's `/` breaks the script's `sed`. `feed-publish.sh` supplies a one-line `mkhash` shim. | failure reproduced, then fixed |
 | 10 | A **bare `option check_signature`** behaves exactly like `option check_signature 1`. | both forms tested in the container |
+| 11 | The publish→serve→fetch-back loop works over real **HTTPS** with the production cache headers: the index is served `no-cache, no-store, must-revalidate`, packages and keys `public, max-age=31536000, immutable`; the live fetch-back matched the build manifest on the real 7 657 333-byte package; flipping **one byte** in the served package made `feed-verify.sh` exit 1; restoring it made the assertion pass again. | `tests/feed-https-publish-test.sh` (7/7) against `tests/feed-https-server.py` |
+| 12 | Publishing touches **no artifact and no compiler**: the sha256-of-sha256s of the artifact directory is identical before and after, the log states no build system was invoked, and the phase table totals 0.6–2.9 s across runs — bounded by `--max-seconds` (default 300), so a hidden recompile cannot pass silently. | same run (`NO-REBUILD PROOF` + phase table) |
+| 13 | `feed-keygen.sh` writes the public key to `<out>/pub/<name>.pem`, which is exactly the "public keys only" directory `--keys-dir` demands; pointing `--keys-dir` at the keypair's own directory is refused (it contains a `.sec`). | refusal rule 7 in `tests/feed-publish-test.sh` + the HTTPS gate |
+| 14 | The published index's own `arch:` field is asserted against `--arch` at publish time. Nothing else in the pipeline notices a mismatch — the package builds, the index signs, the fetch-back matches — and the router then reports "package not found". | new `arch-check` phase in `scripts/feed-publish.sh`; `--arch` cross-checked from the live index in the HTTPS gate |
 
 Still **not** verified anywhere: installing the real `tollgate-wrt` package on
 router hardware, a real 24.10 artifact (none exists, so **no opkg index is
@@ -152,10 +158,26 @@ installation step is broken.
 ```sh
 tests/feed-publish-test.sh --apk-bin .feed-tools/apk/bin/apk     # 12 refusal rules, no docker
 tests/apk-index-trust-test.sh --apk-bin .feed-tools/apk/bin/apk  # 5 trust cases, docker + 25.12 rootfs
+tests/feed-https-publish-test.sh --artifacts <dir of built .apk> \
+  --apk-bin .feed-tools/apk/bin/apk --arch aarch64_cortex-a53   # 7 HTTPS cases, no docker
 tests/opkg-index-test.sh --ipkg-index <sdk>/scripts/ipkg-make-index.sh \
   --usign .feed-tools/apk/bin/usign                              # 3 opkg cases, docker + 24.10 rootfs
 ```
 
-`apk-index-trust-test.sh` and `feed-publish-test.sh` are wired into
-`.github/workflows/validate-feed.yml`; the opkg test needs an SDK for
-`ipkg-make-index.sh`, so it runs locally/on a build host.
+`feed-publish-test.sh`, `apk-index-trust-test.sh` and
+`feed-https-publish-test.sh` are wired into `.github/workflows/validate-feed.yml`;
+the opkg test needs an SDK for `ipkg-make-index.sh`, so it runs locally/on a
+build host.
+
+The HTTPS test needs no Caddy and no VPS: `tests/feed-https-server.py` generates
+its own CA, serves one directory on loopback with the same header rules as
+`deploy/caddy-feed.Caddyfile.example`, and is what the fetch-back assertion
+talks to. It is a rehearsal, not the production server.
+
+## Durability
+
+`records/` holds what survives a dead CI box: the per-channel publish record
+(index sha256, key id, per-package sha256/bytes) **and** a committed snapshot of
+the generated tree (public key + signed index) with the build manifest, plus the
+one-command restore path. See `records/README.md` — including the gap it states
+plainly: package *payloads* are not yet mirrored to a second host.

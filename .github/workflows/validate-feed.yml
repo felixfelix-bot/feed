@@ -258,3 +258,11 @@ jobs:
         # missing/wrong key MUST fail, and apk add MUST install from the signed
         # index. Runs the real apk-tools from openwrt/rootfs:x86_64-v25.12.4.
         run: bash tests/apk-index-trust-test.sh --apk-bin .feed-tools/apk/bin/apk
+
+      - name: Publish, serve over HTTPS and fetch back (fixture package)
+        # Publishes a fixture .apk into a tree, serves it over TLS with the
+        # production cache headers (no-cache index, immutable packages), asserts
+        # the live index lists every package and each one hashes to the build
+        # manifest, then corrupts one served byte and requires a non-zero
+        # refusal. No Caddy and no VPS: tests/feed-https-server.py is the host.
+        run: bash tests/feed-https-publish-test.sh --apk-bin .feed-tools/apk/bin/apk

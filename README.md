@@ -84,7 +84,14 @@ its own keys and channel paths:
 an unsigned apk index makes `apk update` fail with `UNTRUSTED signature` for
 every tester, so signing is enforced by the script rather than documented as a
 step. `scripts/feed-verify.sh` re-fetches the published index and hash-checks
-every package it lists.
+every package it lists. The publish fails if the index's own `Architecture`
+disagrees with the arch it is publishing under (that mismatch reaches a router
+as "package not found", and nothing else in the pipeline notices).
+
+What survives a dead CI box is in [`records/`](records/README.md): the publish
+record (index sha256, key id, per-package hashes) plus a committed snapshot of
+the generated tree with the one-command restore path — including the gap it
+states plainly, that package payloads are not yet mirrored to a second host.
 
 Full design, the measured facts (including one correction to the consultant
 memo about opkg signature checking), the hand-runnable commands and the tests:
