@@ -1,0 +1,245 @@
+# Nostr CI (ngit-ci) workflow for the TollGate OpenWrt feed.
+#
+# WHAT THIS FILE IS VERIFIED AGAINST
+#   GitHub source: https://github.com/FreedomTechFeed/feed  ->  default branch `main`
+#   The ngit `feed` repo is mirrored from that GitHub repo by the gh-ngit-ci
+#   bridge, so `main` is the content the coordinator actually builds. Every
+#   check below was executed against this branch in a worktree of it before
+#   being committed; .ngit/README.md carries the evidence and lists what is
+#   deliberately NOT covered.
+#
+# ngit-ci executes ONLY files under .ngit/act/workflows/ (the GitHub copy at
+# .github/workflows/validate-feed.yml is detected but never executed by it), so
+# this file is what gives the repo CI on Nostr while GitHub keeps running the
+# original.
+#
+# Every check below runs in seconds, needs no OpenWrt SDK, and is deterministic.
+name: Feed Test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  feed-check:
+    name: Shell, Makefile and vendored-file checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # The job's steps use bash builtins (mapfile, compgen -G) and must behave
+    # identically when a step is pasted into a shell by hand.
+    defaults:
+      run:
+        shell: bash
+    env:
+      PKG_DIR: net/tollgate-wrt
+      UPSTREAM: OpenTollGate/tollgate-module-basic-go
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # The act job containers used by ngit-ci are lighter than GitHub runner
+      # VMs and do not guarantee shellcheck, so install it explicitly. Skipped
+      # when a usable shellcheck is already on PATH, which is what makes this
+      # step runnable verbatim outside CI.
+      - name: Install shellcheck
+        run: |
+          set -euo pipefail
+          if ! command -v shellcheck >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends shellcheck
+          fi
+          shellcheck --version
+          echo "shellcheck: $(command -v shellcheck)"
+
+      - name: Collect the shell scripts under test
+        run: |
+          set -euo pipefail
+          # Scripts are selected by shebang, not by extension: the vendored
+          # runtime files under $PKG_DIR/files (init.d, uci-defaults, hotplug,
+          # usr/bin helpers, first-login-setup) plus the repo's own scripts/.
+          # The captive-portal site under files/ is generated JS/CSS/HTML with no
+          # shebang, so it is skipped by construction.
+          mapfile -t FILES < <(
+            grep -rlE '^#! ?/bin/(sh|ash)|^#! ?/usr/bin/env (ba)?sh' \
+              scripts "$PKG_DIR/files" 2>/dev/null | sort
+          )
+          [ "${#FILES[@]}" -gt 0 ] || { echo "FAIL: no shell scripts found"; exit 1; }
+          printf '%s\n' "${FILES[@]}"
+          echo "Found ${#FILES[@]} shell script(s)."
+
+      - name: POSIX syntax check (sh -n)
+        run: |
+          set -euo pipefail
+          # The list is recomputed here rather than carried in a file: ngit-ci
+          # runs every step in a fresh shell, and recomputing keeps each step
+          # independently runnable (the collection is a single grep).
+          mapfile -t FILES < <(
+            grep -rlE '^#! ?/bin/(sh|ash)|^#! ?/usr/bin/env (ba)?sh' \
+              scripts "$PKG_DIR/files" 2>/dev/null | sort
+          )
+          for f in "${FILES[@]}"; do
+            sh -n "$f"
+            echo "OK   $f"
+          done
+          echo "All ${#FILES[@]} scripts parse under sh."
+
+      - name: shellcheck (errors only)
+        run: |
+          set -euo pipefail
+          mapfile -t FILES < <(
+            grep -rlE '^#! ?/bin/(sh|ash)|^#! ?/usr/bin/env (ba)?sh' \
+              scripts "$PKG_DIR/files" 2>/dev/null | sort
+          )
+          # --severity=error, not the shellcheck default: OpenWrt's /bin/sh is
+          # busybox ash, which DOES support `local` (SC3043) and whose
+          # /etc/rc.common framework consumes START/USE_PROCD/EXTRA_COMMANDS
+          # declared at file scope (SC2034). Those warnings are expected in
+          # OpenWrt init scripts and are not gateable; genuine errors still fail.
+          shellcheck --severity=error "${FILES[@]}"
+          echo "shellcheck: no errors across ${#FILES[@]} scripts."
+
+      - name: Lint the package Makefile
+        run: |
+          set -euo pipefail
+          M="$PKG_DIR/Makefile"
+          [ -f "$M" ] || { echo "FAIL: $M not found"; exit 1; }
+
+          for field in PKG_NAME PKG_VERSION PKG_RELEASE PKG_SOURCE PKG_SOURCE_URL \
+                       PKG_HASH PKG_MAINTAINER PKG_LICENSE PKG_LICENSE_FILES \
+                       PKG_BUILD_DIR GO_PKG GO_PKG_BUILD_PKG; do
+            grep -qE "^${field}:=" "$M" || { echo "FAIL: missing ${field}:="; exit 1; }
+          done
+          grep -q 'BuildPackage' "$M" || { echo "FAIL: missing BuildPackage eval"; exit 1; }
+
+          # This repo is the standalone src-git feed, so the golang helpers come
+          # from the consumer's installed `packages` feed. (The openwrt/packages
+          # submission variant lives in the FreedomTechFeed/packages repo and
+          # includes ../../lang/golang/golang-package.mk instead — this check
+          # pins which of the two shapes this repo must have.)
+          grep -qF 'include $(TOPDIR)/feeds/packages/lang/golang/golang-package.mk' "$M" \
+            || { echo "FAIL: golang-package.mk is not included from \$(TOPDIR)/feeds/packages/ (src-git feed wiring)"; exit 1; }
+
+          # openwrt/packages policy for a package submitted upstream. NOTE the
+          # leading [[:space:]]*: REPLACES and DEPENDS live INSIDE the
+          # `define Package/...` block and are tab-indented there, so an
+          # anchored ^DEPENDS regex silently never matches (a vacuous check).
+          if grep -qE '^[[:space:]]*REPLACES' "$M"; then
+            echo "FAIL: REPLACES is not allowed upstream"; exit 1
+          fi
+          if grep -qE '^[[:space:]]*DEPENDS:=.*\+luci' "$M"; then
+            echo "FAIL: packages must not depend on luci"; exit 1
+          fi
+          grep -qE '^PKG_LICENSE:=GPL-3\.0-only' "$M" || { echo "FAIL: PKG_LICENSE must be GPL-3.0-only"; exit 1; }
+          grep -qE '^PKG_LICENSE_FILES:=LICENSE' "$M" || { echo "FAIL: PKG_LICENSE_FILES must be LICENSE"; exit 1; }
+
+          HASH="$(grep -E '^PKG_HASH:=' "$M" | sed 's/^PKG_HASH:=//')"
+          [ "$HASH" != "skip" ] || { echo "FAIL: PKG_HASH is 'skip'"; exit 1; }
+          printf '%s' "$HASH" | grep -qE '^[0-9a-f]{64}$' || { echo "FAIL: PKG_HASH is not a 64-char sha256"; exit 1; }
+
+          # This feed keys the upstream tag off PKG_VERSION (no PKG_VERSION /
+          # PKG_SOURCE_VERSION split — that split only exists in the
+          # openwrt/packages submission). PKG_VERSION therefore drives the
+          # download URL, the tarball name AND the tag-named build dir, so all
+          # three must agree with it or a version bump silently fetches the old
+          # release.
+          V="$(grep -E '^PKG_VERSION:=' "$M" | sed 's/^PKG_VERSION:=//')"
+          grep -qF 'PKG_SOURCE:=tollgate-module-basic-go-$(PKG_VERSION).tar.gz' "$M" \
+            || { echo "FAIL: PKG_SOURCE does not use \$(PKG_VERSION)"; exit 1; }
+          grep -qF 'tar.gz/v$(PKG_VERSION)' "$M" \
+            || { echo "FAIL: PKG_SOURCE_URL does not pin v\$(PKG_VERSION)"; exit 1; }
+          grep -qF 'PKG_BUILD_DIR:=$(BUILD_DIR)/tollgate-module-basic-go-$(PKG_VERSION)/src' "$M" \
+            || { echo "FAIL: PKG_BUILD_DIR is not tag-named from \$(PKG_VERSION) at /src"; exit 1; }
+          printf '%s' "$V" | grep -qE '^[0-9][0-9A-Za-z._-]*$' \
+            || { echo "FAIL: PKG_VERSION '$V' is not a plausible upstream tag"; exit 1; }
+
+          # AGENTS.md: files/ is refreshed only via scripts/sync-from-upstream.sh
+          # <tag>, so that helper must be present and runnable.
+          [ -x scripts/sync-from-upstream.sh ] \
+            || { echo "FAIL: scripts/sync-from-upstream.sh is missing or not executable"; exit 1; }
+
+          echo "Makefile lint passed (PKG_VERSION=$V)."
+
+      - name: Verify every ./files/ path referenced by the Makefile exists
+        run: |
+          set -euo pipefail
+          # The Makefile installs from the vendored tree in this repo, so a
+          # rename in files/ without a matching Makefile edit must fail here
+          # rather than at package-install time on a router.
+          refs="$(grep -oE '\./files/[^[:space:]]+' "$PKG_DIR/Makefile" \
+                    | sed -e 's/\*$//' -e 's#/\.$##' | sort -u)"
+          [ -n "$refs" ] || { echo "FAIL: no ./files/ references found in $PKG_DIR/Makefile"; exit 1; }
+          while IFS= read -r ref; do
+            [ -e "$PKG_DIR/$ref" ] || { echo "FAIL: Makefile references $ref but $PKG_DIR/$ref is missing"; exit 1; }
+            echo "OK   $ref"
+          done <<< "$refs"
+          echo "All $(printf '%s\n' "$refs" | wc -l) referenced files/ paths exist."
+
+      - name: Verify every vendored file is installed by the recipe
+        run: |
+          set -euo pipefail
+          # The converse direction: nothing may sit in files/ that the install
+          # recipe never copies, or the vendored tree and the package contents
+          # have silently diverged (the captive-portal site is installed
+          # recursively as a directory, hence the one directory allowance).
+          M="$PKG_DIR/Makefile"
+          SITE='./files/tollgate-captive-portal-site/.'
+          orphans=0
+          total=0
+          while IFS= read -r f; do
+            total=$((total + 1))
+            rel="./${f#"$PKG_DIR"/}"
+            case "$rel" in
+              ./files/tollgate-captive-portal-site/*)
+                grep -qF "$SITE" "$M" && continue
+                ;;
+            esac
+            if ! grep -qF "$rel" "$M"; then
+              echo "FAIL: $rel is vendored but never installed by the Makefile"
+              orphans=$((orphans + 1))
+            fi
+          done < <(find "$PKG_DIR/files" -type f | sort)
+          [ "$total" -gt 0 ] || { echo "FAIL: no vendored files found under $PKG_DIR/files"; exit 1; }
+          [ "$orphans" -eq 0 ] || exit 1
+          echo "All $total vendored file(s) referenced by the install recipe."
+
+      - name: Verify PKG_HASH and the vendored files/ tree against the pinned tarball
+        run: |
+          set -euo pipefail
+          M="$PKG_DIR/Makefile"
+          EXPECTED="$(grep -E '^PKG_HASH:=' "$M" | sed 's/^PKG_HASH:=//')"
+          V="$(grep -E '^PKG_VERSION:=' "$M" | sed 's/^PKG_VERSION:=//')"
+          URL="https://codeload.github.com/${UPSTREAM}/tar.gz/v${V}"
+
+          echo "Fetching $URL"
+          WORK="$(mktemp -d)"
+          trap 'rm -rf "$WORK"' EXIT
+          curl -fsSL -o "$WORK/pkg.tar.gz" "$URL"
+
+          ACTUAL="$(sha256sum "$WORK/pkg.tar.gz" | awk '{print $1}')"
+          echo "expected=$EXPECTED"
+          echo "actual  =$ACTUAL"
+          [ "$EXPECTED" = "$ACTUAL" ] || { echo "FAIL: PKG_HASH does not match the pinned release tarball"; exit 1; }
+          echo "PKG_HASH matches the pinned release."
+
+          mkdir -p "$WORK/x"
+          tar -xzf "$WORK/pkg.tar.gz" -C "$WORK/x"
+          ROOT="$WORK/x/tollgate-module-basic-go-${V}"
+          [ -d "$ROOT" ] || { echo "FAIL: tarball does not extract to tollgate-module-basic-go-${V}/"; exit 1; }
+          [ -f "$ROOT/src/go.mod" ] || { echo "FAIL: $ROOT/src/go.mod missing (PKG_BUILD_DIR would have no go.mod)"; exit 1; }
+          [ -d "$ROOT/src/cmd/tollgate-cli" ] || { echo "FAIL: CLI module src/cmd/tollgate-cli missing (Build/Compile builds it manually)"; exit 1; }
+          echo "Tarball layout matches PKG_BUILD_DIR (src/go.mod) and the nested CLI module."
+
+          # AGENTS.md golden rule 5: files/ is VENDORED from the upstream release
+          # and may only be refreshed by scripts/sync-from-upstream.sh <tag>.
+          # Assert the vendored tree is identical to packaging/files/ of the
+          # tarball PKG_VERSION pins, so a hand-edit or a missed re-sync fails
+          # here instead of on a router.
+          diff -r "$ROOT/packaging/files" "$PKG_DIR/files" \
+            || { echo "FAIL: $PKG_DIR/files differs from packaging/files/ in the v${V} tarball (refresh with scripts/sync-from-upstream.sh)"; exit 1; }
+          echo "Vendored files/ is identical to packaging/files/ of the v${V} release."
+
+  # NOTE: no build job here by design. The OpenWrt SDK build in
+  # .github/workflows/validate-feed.yml uses `container:` (refused by ngit-ci),
+  # needs ~30-60 minutes per target against a 30-minute job ceiling, and would
+  # need a multi-target matrix the coordinator cannot split across runners. It
+  # stays authoritative on GitHub. See .ngit/README.md.
