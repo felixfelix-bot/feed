@@ -43,6 +43,23 @@ if [ "$apk_count" -eq 0 ]; then
     echo "warning: no .apk files in '$APK_DIR' — generating empty index" >&2
 fi
 
+# ---------------------------------------------------------------------------
+# APKv3 guard. OpenWrt 25.12 SDKs produce apk-tools3 ADB packages (magic
+# "ADBd"): NOT tarballs and not parseable by the manual fallback below. If
+# any input is v3 and no native `apk` exists, fail loudly instead of
+# silently emitting an empty index. (Run the indexer inside an OpenWrt SDK
+# container — it ships apk-tools3 — or pre-convert to v2.)
+# ---------------------------------------------------------------------------
+if ! command -v apk >/dev/null 2>&1; then
+    for a in $apks; do
+        [ -f "$a" ] || continue
+        if [ "$(head -c 4 "$a" 2>/dev/null || true)" = "ADBd" ]; then
+            echo "error: $(basename "$a") is APKv3 (ADBd) and no native 'apk' is in PATH — cannot index. Use an OpenWrt SDK container (ships apk-tools3)." >&2
+            exit 1
+        fi
+    done
+fi
+
 # ---------------------------------------------------------------- strategy 1
 if command -v apk >/dev/null 2>&1; then
     echo "==> using native 'apk index'" >&2
@@ -105,7 +122,6 @@ for apk in $apks; do
     url=$(field url)
     desc=$(field pkgdesc)
     builddate=$(field builddate)
-    csize=$(field packager || true)
     isz=$(field size || true)
     commit=$(field commit || true)
 

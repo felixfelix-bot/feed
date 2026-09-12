@@ -213,6 +213,60 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 5. APKv3 (ADBd, OpenWrt 25.12+): fail loudly without native apk
+# ---------------------------------------------------------------------------
+
+echo "== 5. APKv3 handling (hard-fail without apk-tools3) =="
+
+# A minimal v3 stand-in: correct magic, opaque body (the real format is an
+# ADB container whose string table is not shell-readable — that's the point).
+printf 'ADBd' > "$ART/tollgate-wrt-0.5.0-r1-v3.apk"
+head -c 256 /dev/urandom >> "$ART/tollgate-wrt-0.5.0-r1-v3.apk"
+
+if command -v apk >/dev/null 2>&1; then
+    echo "  (native apk present — v3 parsing delegated, skipped here)"
+    pass "v3 with native apk: delegated"
+else
+    if sh "$ART_PROBE" "$ART/tollgate-wrt-0.5.0-r1-v3.apk" >/dev/null 2>&1; then
+        fail "v3 without apk must exit non-zero"
+    else
+        msg=$(sh "$ART_PROBE" "$ART/tollgate-wrt-0.5.0-r1-v3.apk" 2>&1 || true)
+        case "$msg" in
+            *APKv3*|*apk-tools3*) pass "v3 without apk: hard-fail w/ actionable message" ;;
+            *) fail "v3 error not actionable: $msg" ;;
+        esac
+    fi
+
+    # The indexer must ALSO refuse (not silently skip) an unreadable v3 file.
+    V3DIR="$TMP/v3dir"; mkdir -p "$V3DIR" "$TMP/feed-v3"
+    cp "$ART/tollgate-wrt-0.5.0-r1-v3.apk" "$V3DIR/"
+    if sh "$INDEX_FEED" "$V3DIR" "$TMP/feed-v3" >/dev/null 2>&1; then
+        fail "index-feed must hard-fail on unreadable v3 artifact"
+    else
+        pass "index-feed hard-fails on unreadable v3 artifact"
+    fi
+fi
+
+# Real-artifact smoke (skipped when the FD3-built APKv3 sample is absent):
+# documents that a REAL 25.12 SDK package is v3 and — without apk-tools3 on
+# this host — is refused cleanly rather than mis-indexed.
+REAL_APK=${REAL_APK:-/home/c03rad0r/sdk-out/mediatek-filogic/tollgate-wrt-0.6.0_alpha1-r1.apk}
+if [ -f "$REAL_APK" ]; then
+    if [ "$(head -c 4 "$REAL_APK")" = "ADBd" ]; then
+        pass "real FD3 artifact confirmed APKv3 (ADBd magic)"
+        if sh "$ART_PROBE" "$REAL_APK" >/dev/null 2>&1; then
+            fail "real v3 artifact must fail without native apk (unexpected pass!)"
+        else
+            pass "real v3 artifact refused cleanly (needs apk-tools3: SDK-container/CI path)"
+        fi
+    else
+        fail "real FD3 artifact is NOT ADBd — assumptions changed, revisit tests"
+    fi
+else
+    echo "  (real FD3 artifact not present — smoke skipped)"
+fi
+
+# ---------------------------------------------------------------------------
 
 echo ""
 if [ "$fails" -eq 0 ]; then

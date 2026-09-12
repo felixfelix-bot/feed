@@ -67,35 +67,11 @@ WORK=$(mktemp -d)
 cleanup() { rm -rf "$WORK"; }
 trap cleanup EXIT
 
-# ---------------------------------------------------------------------------
-# Architecture detection — read the arch straight out of each artifact.
-# .ipk: ar archive -> control.tar.* -> ./control -> "Architecture:" field
-# .apk: gzip tarball -> .PKGINFO -> "arch = <value>" line
-# ---------------------------------------------------------------------------
-
-ipk_arch() {
-    ipk="$1"
-    d=$(mktemp -d -p "$WORK")
-    if ! ar x "$ipk" --output "$d" 2>/dev/null; then rm -rf "$d"; return 1; fi
-    ctrl_tar=""
-    for f in "$d"/control.tar.* "$d"/control.tar; do
-        [ -f "$f" ] && { ctrl_tar="$f"; break; }
-    done
-    [ -n "$ctrl_tar" ] || { rm -rf "$d"; return 1; }
-    if ! tar xf "$ctrl_tar" -C "$d" 2>/dev/null; then rm -rf "$d"; return 1; fi
-    ctrl_file=""
-    for c in "$d/control" "$d/./control"; do
-        [ -f "$c" ] && { ctrl_file="$c"; break; }
-    done
-    [ -n "$ctrl_file" ] || { rm -rf "$d"; return 1; }
-    sed -n 's/^Architecture:[[:space:]]*//p' "$ctrl_file" | head -n1 | tr -d '[:space:]'
-    rm -rf "$d"
-}
-
-apk_arch() {
-    tar -xzOf "$1" .PKGINFO 2>/dev/null \
-        | sed -n 's/^arch[[:space:]]*=[[:space:]]*//p' | head -n1 | tr -d '[:space:]'
-}
+# Architecture detection delegates to artifact-arch.sh — the single source
+# of parsing truth (shared with the release bridge): .ipk via ar/control,
+# .apk APKv2 via .PKGINFO, .apk APKv3 (ADBd, OpenWrt 25.12+) via native
+# apk-tools3. An artifact whose arch cannot be read is a HARD failure —
+# skipping it would silently publish an incomplete/empty feed.
 
 # ---------------------------------------------------------------------------
 # Group artifacts into staging/<arch>/{opkg,apk}/
@@ -112,10 +88,9 @@ while IFS= read -r f; do
     [ -f "$f" ] || continue
     case "$f" in
         *.ipk)
-            arch=$(ipk_arch "$f" 2>/dev/null || true)
-            if [ -z "$arch" ]; then
-                err "could not read Architecture from $(basename "$f") — skipping"
-                continue
+            if ! arch=$(sh "$SCRIPT_DIR/artifact-arch.sh" "$f" 2>/dev/null); then
+                err "could not read Architecture from $(basename "$f") — aborting (an unreadable artifact must block publication)"
+                exit 1
             fi
             dest="$WORK/$arch/opkg"
             mkdir -p "$dest"
@@ -124,10 +99,9 @@ while IFS= read -r f; do
             echo "  ipk  [$arch] $(basename "$f")"
             ;;
         *.apk)
-            arch=$(apk_arch "$f" 2>/dev/null || true)
-            if [ -z "$arch" ]; then
-                err "could not read arch from $(basename "$f") .PKGINFO — skipping"
-                continue
+            if ! arch=$(sh "$SCRIPT_DIR/artifact-arch.sh" "$f" 2>/dev/null); then
+                err "could not read arch from $(basename "$f") — aborting (an unreadable artifact must block publication; APKv3/ADBd files need apk-tools3 in PATH, e.g. an OpenWrt SDK container)"
+                exit 1
             fi
             dest="$WORK/$arch/apk"
             mkdir -p "$dest"
