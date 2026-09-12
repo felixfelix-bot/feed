@@ -188,6 +188,31 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 4. artifact-arch.sh: embedded arch probe used by the release bridge
+# ---------------------------------------------------------------------------
+
+echo "== 4. artifact-arch.sh: embedded arch probe =="
+
+ART_PROBE="$ROOT/scripts/artifact-arch.sh"
+if [ ! -f "$ART_PROBE" ]; then
+    fail "scripts/artifact-arch.sh not found"
+else
+    got=$(sh "$ART_PROBE" "$ART/tollgate-wrt-0.5.0-r1.apk" 2>/dev/null || true)
+    [ "$got" = "aarch64_cortex-a53" ] \
+        && pass "probe apk -> aarch64_cortex-a53" \
+        || fail "probe apk -> '$got' (expected aarch64_cortex-a53)"
+    got=$(sh "$ART_PROBE" "$ART/tollgate-wrt-0.5.0-r1.ipk" 2>/dev/null || true)
+    [ "$got" = "x86_64" ] \
+        && pass "probe ipk -> x86_64" \
+        || fail "probe ipk -> '$got' (expected x86_64)"
+    if sh "$ART_PROBE" "$ART/README.txt" >/dev/null 2>&1; then
+        fail "probe non-package must exit non-zero"
+    else
+        pass "probe non-package exits non-zero"
+    fi
+fi
+
+# ---------------------------------------------------------------------------
 
 echo ""
 if [ "$fails" -eq 0 ]; then

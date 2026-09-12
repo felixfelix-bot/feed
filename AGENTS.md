@@ -15,7 +15,15 @@ merged into [`openwrt/packages`](https://github.com/openwrt/packages).
 net/tollgate-wrt/Makefile   # the package recipe (single package, two binaries)
 net/tollgate-wrt/files/     # vendored runtime files (init.d, uci-defaults, captive-portal site, …)
 scripts/sync-from-upstream.sh
-.github/workflows/validate-feed.yml
+scripts/index-feed.sh       # feed indexer (per-arch APKINDEX.tar.gz / Packages.gz)
+scripts/generate-apk-index.sh
+scripts/generate-packages-index.sh
+scripts/target-to-arch.sh   # SDK target → arch tuple map (single source of truth)
+scripts/artifact-arch.sh    # read the arch tuple embedded in a .apk/.ipk
+tests/test-index-feed.sh    # synthetic index-pipeline test (sh tests/…)
+.github/workflows/validate-feed.yml   # build gate (lint, go-smoke, build-sdk)
+.github/workflows/build-feed.yml      # publish: tag → release → indices → gh-pages
+docs/feed-index.md          # the publish pipeline + feed consumption
 PLAN.md                     # design + checklist (keep the checklist current)
 ```
 
@@ -43,6 +51,11 @@ scripts/sync-from-upstream.sh v0.5.1   # updates PKG_VERSION, PKG_HASH, files/
 ```
 
 Then verify the CI `go-smoke` + `build-sdk` jobs pass before merging.
+**Merge first, tag second**: pushing `vX.Y.Z` after the merge makes
+`build-feed.yml` bridge the tag run's SDK artifacts into a GitHub release
+(tuple-suffixed assets), generate per-arch-tuple indices, and deploy them
+to gh-pages — the consumer feed. Full procedure + rationale:
+[`docs/feed-index.md`](docs/feed-index.md).
 
 ## Verification
 

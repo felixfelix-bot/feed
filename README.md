@@ -68,6 +68,27 @@ This downloads the tarball for the given tag, recomputes `PKG_HASH`, sets
 Review the diff (the captive-portal-site assets change every release — that's
 expected) and commit.
 
+## Binary feed (no build needed)
+
+CI publishes ready-made per-architecture package indices so a router can
+install `tollgate-wrt` without compiling anything. On OpenWrt 24.10+
+(apk-based) devices:
+
+```sh
+echo "src/gz tollgate https://freedomtechfeed.github.io/feed/<arch>/" >> /etc/opkg/customfeeds.conf
+echo "https://freedomtechfeed.github.io/feed/<arch>/" >> /etc/apk/repositories
+apk update
+apk add tollgate-wrt
+```
+
+Replace `<arch>` with your device's OpenWrt **arch tuple** — e.g.
+`aarch64_cortex-a53` (GL-MT6000 / mediatek-filogic), `mipsel_24kc`
+(GL-MT3000 / ramips-mt7621), or `x86_64`. Check yours with
+`opkg print-architecture` or `apk --print-arch`. The same per-arch
+directories serve `Packages.gz` for opkg-based (pre-24.10) releases; the
+full pipeline — tag → release assets → indices → gh-pages — is documented
+in [`docs/feed-index.md`](docs/feed-index.md).
+
 ## Validation
 
 `.github/workflows/validate-feed.yml` runs three jobs:
