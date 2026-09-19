@@ -166,6 +166,18 @@ Notes learned the hard way:
 - [x] `scripts/sync-from-upstream.sh` re-pins version/hash and re-vendors files/
 - [x] Prove the build on a pinned 25.12 SDK (`mediatek-filogic`) and record raw output
 - [x] Rewrite `README.md` (honest supported matrix) and this plan
-- [ ] Run the same compile on the remaining matrix targets (x86-64, ramips-mt7621)
+- [x] Run the same compile on the remaining matrix targets (x86-64, ramips-mt7621)
+      — `.github/workflows/validate-feed.yml` job `SDK build` builds all three
+      targets in the pinned `openwrt/sdk:*-v25.12.5` images
+      (`feeds update/install` -> `download` -> `check` -> `compile` -> packaged
+      `.apk` + in-package version assertion). Green on
+      <https://github.com/FreedomTechFeed/feed/actions/runs/34728222615> for
+      `9ff53e7e` and re-run for the docs commit that carries this line.
+- [ ] **Re-pin before shipping.** The tag currently pinned (`v0.6.0-alpha1`) does
+      not contain `#375` (`7e999bd`, wallet drain fund-safety); `v0.6.0-alpha2`
+      does not exist yet, so the present pin is a scaffold/dry-run pin. Run
+      `scripts/sync-from-upstream.sh v0.6.0-alpha2` (or whatever tag carries
+      `#375`) before the feed serves testers — see the ship-blocking caveat in
+      `README.md`.
 - [ ] _(future)_ exercise the built package on router hardware
 - [ ] _(future, operator-gated)_ lift `net/tollgate-wrt/` into `openwrt/packages`
