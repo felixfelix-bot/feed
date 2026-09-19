@@ -46,8 +46,29 @@ Two further facts about the target line, both verified on 2026-09-13:
   or vendor it. This does not affect compilation of this package.
 - `PKG_SOURCE_VERSION` is pinned to an **existing** upstream tag. The next
   release tag (`v0.6.0-alpha2`) was still being prepared upstream at the time
-  of writing, so the feed is proven against `v0.6.0-alpha1` — see
-  [Version identity](#version-identity) for the one-line bump.
+  of writing (re-checked 2026-09-19: `git ls-remote --tags` on the upstream repo
+  still ends at `v0.6.0-alpha1`; the tag is operator-gated), so the feed is
+  proven against `v0.6.0-alpha1` — see [Version identity](#version-identity) for
+  the one-line bump.
+
+> **Ship-blocking caveat: the current pin predates a wallet-safety fix.** The
+> pinned tag `v0.6.0-alpha1` (`414650310b`) does **not** contain `#375`
+> (`fix(cli): make wallet drain cashu fund-safe and non-interactive-safe`,
+> commit `7e999bd`), which is 2 commits ahead of it and itself rewrites a
+> vendored runtime file (`packaging/files/man/man8/tollgate-wallet-drain-cashu.8`).
+> Measured 2026-09-19 with
+> `gh api repos/OpenTollGate/tollgate-module-basic-go/compare/v0.6.0-alpha1...7e999bd`.
+> A package built from the present pin therefore ships **without** that
+> fund-safety fix, and the build and CI evidence in this repository describe a
+> **scaffold/dry-run pin**, not a shippable one. Before the feed is used to
+> serve testers, re-pin to the release tag that carries `#375`:
+>
+> ```sh
+> scripts/sync-from-upstream.sh v0.6.0-alpha2   # rewrites the pin, hash and files/
+> ```
+>
+> That is the single remaining step; nothing in the build depends on the
+> `alpha1` string itself.
 
 ## Using the feed
 
