@@ -286,3 +286,32 @@ jobs:
           name: tollgate-wrt-${{ matrix.target }}
           path: artifacts/*
           if-no-files-found: error
+
+  feed-index:
+    # The runtime-feed half: index generation, signing and the publish step's
+    # refusal rules. Both tests run against the SDK's HOST apk-tools (the target
+    # rootfs apk has no mkndx) and a real OpenWrt rootfs image.
+    name: Runtime feed index (publish, sign, trust)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract the SDK host tools (apk-tools with mkndx, usign)
+        run: bash scripts/get-host-apk-tools.sh --out .feed-tools/apk
+
+      - name: Publish refusal rules (manifest, re-cut, retention, dry-run)
+        run: bash tests/feed-publish-test.sh --apk-bin .feed-tools/apk/bin/apk
+
+      - name: apk index trust on a real 25.12 rootfs
+        # unsigned index MUST fail with UNTRUSTED signature, signed MUST work,
+        # missing/wrong key MUST fail, and apk add MUST install from the signed
+        # index. Runs the real apk-tools from openwrt/rootfs:x86_64-v25.12.4.
+        run: bash tests/apk-index-trust-test.sh --apk-bin .feed-tools/apk/bin/apk
+
+      - name: Publish, serve over HTTPS and fetch back (fixture package)
+        # Publishes a fixture .apk into a tree, serves it over TLS with the
+        # production cache headers (no-cache index, immutable packages), asserts
+        # the live index lists every package and each one hashes to the build
+        # manifest, then corrupts one served byte and requires a non-zero
+        # refusal. No Caddy and no VPS: tests/feed-https-server.py is the host.
+        run: bash tests/feed-https-publish-test.sh --apk-bin .feed-tools/apk/bin/apk

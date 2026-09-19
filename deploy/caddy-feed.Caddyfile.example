@@ -1,0 +1,44 @@
+# Example Caddy site for a TollGate runtime feed tree.
+#
+# This is a TEMPLATE for the hosting card (FEED-SERVE-PROVE owns the VPS and
+# its ansible role — the real site must be defined there and re-applied, not
+# edited on the box). Copy the header rules; do not copy the paths blindly.
+#
+# The one lethal failure mode is a CACHED INDEX: stale bytes, or an index that
+# still lists a package we removed. Packages are the opposite — they are
+# immutable and versioned, so they can be cached forever.
+
+feed.example.com {
+	root * /srv/www/feed
+	encode zstd gzip
+	file_server
+
+	# --- mutable paths: never cache -------------------------------------
+	# apk index
+	@feedindex path */packages.adb */packages.adb.sig */packages.adb.asc
+	header @feedindex Cache-Control "no-cache, no-store, must-revalidate"
+	header @feedindex Pragma "no-cache"
+
+	# opkg index + signature
+	@opkgindex path */Packages */Packages.gz */Packages.sig */Packages.manifest */sha256sums
+	header @opkgindex Cache-Control "no-cache, no-store, must-revalidate"
+	header @opkgindex Pragma "no-cache"
+
+	# --- immutable paths: cache forever ---------------------------------
+	# versioned packages, and the public keys (a key file's name must never
+	# change material under a router — feed-publish.sh enforces that)
+	@immutable path *.apk *.ipk */keys/*.pem */keys/*.pub
+	header @immutable Cache-Control "public, max-age=31536000, immutable"
+
+	# --- safety rails ---------------------------------------------------
+	# No directory listings: an index directory listing invites people to
+	# hand-download packages and skip the trust chain.
+	header -Server
+	log {
+		output file /var/log/caddy/feed.log
+	}
+}
+
+# Optional: keep the artifact mirror (Blossom, other hosts) OUT of the index
+# path — content-addressed storage cannot serve a mutable index at a stable
+# URL, so it is a mirror for packages only.

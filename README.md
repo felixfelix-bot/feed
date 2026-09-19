@@ -89,6 +89,35 @@ make package/feeds/tollgate/tollgate-wrt/compile V=s
 > `packages` feed, so keep that feed enabled. `jq` comes from there too.
 > `nodogsplash` is listed as a runtime dependency — see the matrix note above.
 
+## Runtime feed (installing on a router)
+
+The `src-git` feed above is for **building firmware**. A router that installs
+the package with `apk`/`opkg` needs the *runtime* feed: a signed index plus
+versioned package files, served over HTTPS. It lives in a separate tree with
+its own keys and channel paths:
+
+```
+<tree>/keys/<name>.pem
+<tree>/<channel>/<line>/<arch>/packages.adb + <pkg>-<ver>.apk
+```
+
+`scripts/feed-publish.sh` generates, **signs** and atomically publishes it —
+an unsigned apk index makes `apk update` fail with `UNTRUSTED signature` for
+every tester, so signing is enforced by the script rather than documented as a
+step. `scripts/feed-verify.sh` re-fetches the published index and hash-checks
+every package it lists. The publish fails if the index's own `Architecture`
+disagrees with the arch it is publishing under (that mismatch reaches a router
+as "package not found", and nothing else in the pipeline notices).
+
+What survives a dead CI box is in [`records/`](records/README.md): the publish
+record (index sha256, key id, per-package hashes) plus a committed snapshot of
+the generated tree with the one-command restore path — including the gap it
+states plainly, that package payloads are not yet mirrored to a second host.
+
+Full design, the measured facts (including one correction to the consultant
+memo about opkg signature checking), the hand-runnable commands and the tests:
+[`docs/feed-index-publishing.md`](docs/feed-index-publishing.md).
+
 ## Version identity
 
 Two strings, one release, both proven with the real comparison tools rather
