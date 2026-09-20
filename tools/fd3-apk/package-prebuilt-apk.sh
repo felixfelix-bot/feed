@@ -142,6 +142,12 @@ BIN_CLI_BASE="$(basename "$BIN_CLI")"
 FEED="$(mktemp -d)"
 mkdir -p "$FEED/net"
 cp -r "$STAGE" "$FEED/net/tollgate-wrt"
+# The SDK image runs as buildbot(1000) while a scratch build may run as any uid,
+# and `mktemp -d` is 0700 — the container then cannot even read the :ro src-link
+# feed ("find: 'feeds/tollgate': Permission denied"), which surfaces much later
+# as `No rule to make target 'package/feeds/tollgate/tollgate-wrt/compile'`.
+# The mount is read-only and carries no secrets, so open it to read/traverse.
+chmod -R a+rX "$FEED"
 
 # Pre-run reaper: reclaim a container (and its anonymous volume) left behind if a
 # previous run was SIGKILLed and never reached its cleanup trap.
