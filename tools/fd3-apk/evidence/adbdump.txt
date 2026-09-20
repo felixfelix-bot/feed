@@ -1,0 +1,947 @@
+#%SCHEMA: 676B6370
+# ADB block, size: 13132, compat: 0, ver: 0
+info:
+  name: tollgate-wrt
+  version: 0.0.0_git98-r0
+  hashes: d319269f82f6b045de4a7e4ee6d335a839f383f9
+  description: TollGate Basic Module for OpenWrt
+  arch: aarch64_cortex-a53
+  license: GPL-3.0-only
+  origin: /workspace/net/tollgate-wrt
+  maintainer: TollGate <tollgate@tollgate.me>
+  installed-size: 19186307
+  depends: # 1 items
+    - libc
+  provides: # 2 items
+    - nodogsplash-files=0.0.0_git98-r0
+    - tollgate-wrt-any
+paths: # 25 items
+  - acl:
+      mode: 0755
+      user: root
+      group: root
+  - name: etc
+    acl:
+      mode: 0755
+      user: root
+      group: root
+  - name: etc/crontabs
+    acl:
+      mode: 0755
+      user: root
+      group: root
+  - name: etc/hotplug.d
+    acl:
+      mode: 0755
+      user: root
+      group: root
+  - name: etc/hotplug.d/iface
+    acl:
+      mode: 0755
+      user: root
+      group: root
+    files: # 1 items
+      - name: 95-tollgate-restart
+        acl:
+          mode: 0755
+          user: root
+          group: root
+        size: 2869
+        mtime: 1782737960
+        hash: c9f746b1540b68870df2f80389c4d6248d07402374877d118fb18964933e54d3
+  - name: etc/init.d
+    acl:
+      mode: 0755
+      user: root
+      group: root
+    files: # 1 items
+      - name: tollgate-wrt
+        acl:
+          mode: 0755
+          user: root
+          group: root
+        size: 1380
+        mtime: 1782737960
+        hash: dd2725438178edb3bd7da48c467487fd4137b9ce7f607b3ee62f6dd132966551
+  - name: etc/nftables.d
+    acl:
+      mode: 0755
+      user: root
+      group: root
+    files: # 2 items
+      - name: 20-nds-enforce.nft
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 1604
+        mtime: 1782737960
+        hash: 8eb1987d96fdde60ac5f8a3e31514c932813bb7da62dd0b6fa1326a911c02641
+      - name: 30-backend-firewall.nft
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 954
+        mtime: 1782737960
+        hash: af5defb355404bcf032164879a72c07b9c4f9dfd64ba6c98555603589c24be97
+  - name: etc/tollgate
+    acl:
+      mode: 0755
+      user: root
+      group: root
+  - name: etc/tollgate/ecash
+    acl:
+      mode: 0755
+      user: root
+      group: root
+  - name: etc/tollgate/tollgate-captive-portal-site
+    acl:
+      mode: 0755
+      user: root
+      group: root
+    files: # 7 items
+      - name: 404.html
+        acl:
+          mode: 0664
+          user: root
+          group: root
+        size: 3268
+        mtime: 1782737960
+        hash: 9730d0d42a99fd8a54f9b9ed04302d70431ea8807e2ea2cd9e651f05d400161f
+      - name: asset-manifest.json
+        acl:
+          mode: 0664
+          user: root
+          group: root
+        size: 599
+        mtime: 1782737960
+        hash: b0d1b1f04f4329ce900acd05368141bcf66c024ccc22b77617e8b974bdd1580e
+      - name: balance.html
+        acl:
+          mode: 0664
+          user: root
+          group: root
+        size: 1112
+        mtime: 1782737960
+        hash: f4fdd473b16c165f62b7c7bac9efcf9b4a314406efea58bfe782c1fdb5111bd6
+      - name: favicon.ico
+        acl:
+          mode: 0664
+          user: root
+          group: root
+        size: 185470
+        mtime: 1782737960
+        hash: f1d05d28fc2556fc84882cfb3c3a7fa0ee8c4b66846f9408af55bb34909b7e36
+      - name: manifest.json
+        acl:
+          mode: 0664
+          user: root
+          group: root
+        size: 294
+        mtime: 1782737960
+        hash: fbd7d5bb083f08eff4b969a46711a769a76cad886b944eec6e6ce3e435a84aee
+      - name: splash.html
+        acl:
+          mode: 0664
+          user: root
+          group: root
+        size: 872
+        mtime: 1782737960
+        hash: 5664ac7f20d84bcf57f6280b7a2e2cd5764dee1f384c4a57559d3f4b4ce7c710
+      - name: welcome.html
+        acl:
+          mode: 0664
+          user: root
+          group: root
+        size: 4481
+        mtime: 1782737960
+        hash: 0ed54803de1e81529f56f0b14e91e033c0105913d0329b06432cb0059c1a94a3
+  - name: etc/tollgate/tollgate-captive-portal-site/assets
+    acl:
+      mode: 0775
+      user: root
+      group: root
+    files: # 8 items
+      - name: TollGate_Logo-C-white-D93CsdZc.png
+        acl:
+          mode: 0664
+          user: root
+          group: root
+        size: 10145
+        mtime: 1782737960
+        hash: c77dad055d309c075788cb9e6a21560cf347f8e747053a320f7faf0ef0b8bd78
+      - name: balance-5KSP87Gz.css
+        acl:
+          mode: 0664
+          user: root
+          group: root
+        size: 954
+        mtime: 1782737960
+        hash: 1c2b4628dedc20e4dbd8b48f984209c77eaa418285f496fc01a9879e0ef01874
+      - name: balance-BqACpvtq.js
+        acl:
+          mode: 0664
+          user: root
+          group: root
+        size: 3996
+        mtime: 1782737960
+        hash: 35764f31599515e4d87eaa3b8d595f9ceb86360a656429bfc2677c4a0216c91b
+      - name: browser-ponyfill-BpyZbfea.js
+        acl:
+          mode: 0664
+          user: root
+          group: root
+        size: 11027
+        mtime: 1782737960
+        hash: bc9b9913b16964da7c48642a47f1cdccd86317c15726c6b397b43c75060f9b0a
+      - name: index-D9l7TVHN.css
+        acl:
+          mode: 0664
+          user: root
+          group: root
+        size: 18574
+        mtime: 1782737960
+        hash: d031808ed9c732c86a2c70ad0d58a155fdfe2ee76ecfe80f14152b8faffba426
+      - name: index-DxBkINUB.js
+        acl:
+          mode: 0664
+          user: root
+          group: root
+        size: 431057
+        mtime: 1782737960
+        hash: 8ac2b312fbd80b69e9822467b842de97c7278f0e3346f3a0ea8f92530315a3c0
+      - name: portal-BQ7wV0jU.js
+        acl:
+          mode: 0664
+          user: root
+          group: root
+        size: 169
+        mtime: 1782737960
+        hash: 7f61fa4de6baaef4878182d102e1988e32c80ec2fb64a8ad0d6c3ea893b27262
+      - name: qr-scanner-worker.min-D85Z9gVD.js
+        acl:
+          mode: 0664
+          user: root
+          group: root
+        size: 43954
+        mtime: 1782737960
+        hash: f9d5a00a24ef3c0f52453748a018feec9441c0031c7068e41606c744a26491f5
+  - name: etc/tollgate/tollgate-captive-portal-site/locales
+    acl:
+      mode: 0775
+      user: root
+      group: root
+    files: # 1 items
+      - name: en.json
+        acl:
+          mode: 0664
+          user: root
+          group: root
+        size: 6488
+        mtime: 1782737960
+        hash: 24694bcbba2ccaa62e46865049afbc3acbb052cdd702893213c4981cd3758cee
+  - name: etc/uci-defaults
+    acl:
+      mode: 0755
+      user: root
+      group: root
+    files: # 2 items
+      - name: 90-tollgate-captive-portal-symlink
+        acl:
+          mode: 0755
+          user: root
+          group: root
+        size: 4871
+        mtime: 1782737960
+        hash: b9fa44e85654575f056646018bedeb6f2e3e8baddf8faceddfd53d0790478acf
+      - name: 99-tollgate-setup
+        acl:
+          mode: 0755
+          user: root
+          group: root
+        size: 16596
+        mtime: 1782737960
+        hash: be4e7d2ee4813a78fa74f2ac726a3bcf4bc4b9af75aea190e8ec4863b9a1d6f0
+  - name: lib
+    acl:
+      mode: 0755
+      user: root
+      group: root
+  - name: lib/apk
+    acl:
+      mode: 0755
+      user: root
+      group: root
+  - name: lib/apk/packages
+    acl:
+      mode: 0755
+      user: root
+      group: root
+    files: # 1 items
+      - name: tollgate-wrt.list
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 3270
+        mtime: 1782737960
+        hash: 7564b25ee87d2a948038757b7b802223020ef14e0c64c46940a7504795ff74f6
+  - name: lib/upgrade
+    acl:
+      mode: 0755
+      user: root
+      group: root
+  - name: lib/upgrade/keep.d
+    acl:
+      mode: 0755
+      user: root
+      group: root
+    files: # 1 items
+      - name: tollgate
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 118
+        mtime: 1782737960
+        hash: b9fb1874de22aa7cf719ff82cd3527545f7899cb38e03b64c069264aa98119e8
+  - name: usr
+    acl:
+      mode: 0755
+      user: root
+      group: root
+  - name: usr/bin
+    acl:
+      mode: 0755
+      user: root
+      group: root
+    files: # 5 items
+      - name: check_package_path
+        acl:
+          mode: 0755
+          user: root
+          group: root
+        size: 540
+        mtime: 1782737960
+        hash: a7af3bc2c159c9dcbf210c69e5e74016f816833912888e9bd62f4269e306dbdd
+      - name: tollgate
+        acl:
+          mode: 0755
+          user: root
+          group: root
+        size: 6640609
+        mtime: 1782737960
+        hash: 0c058950ab82419aff7b3a01cb3869a35f29d29729c52334479c67b5e1846268
+      - name: tollgate-apply-ssl
+        acl:
+          mode: 0755
+          user: root
+          group: root
+        size: 39
+        mtime: 1782737960
+        hash: de3e8a67317e3b5f9fe9aee8f196efd95453d4f5304b259f18e8a34ce6837c00
+      - name: tollgate-remove-ssl
+        acl:
+          mode: 0755
+          user: root
+          group: root
+        size: 40
+        mtime: 1782737960
+        hash: b717665cdfa5e5754817e18b5378b13483513e67d98eb326ca53a7f439313751
+      - name: tollgate-wrt
+        acl:
+          mode: 0755
+          user: root
+          group: root
+        size: 11763707
+        mtime: 1782737960
+        hash: ec3d81bb903f0efa16dd69978071216f82499171dacdf534082cf44161da3888
+  - name: usr/local
+    acl:
+      mode: 0755
+      user: root
+      group: root
+  - name: usr/local/bin
+    acl:
+      mode: 0755
+      user: root
+      group: root
+    files: # 1 items
+      - name: first-login-setup
+        acl:
+          mode: 0755
+          user: root
+          group: root
+        size: 320
+        mtime: 1782737960
+        hash: 53939de79c1d6861783462ca13ee871361fd78eda63abe67f8df36ed3c6969b4
+  - name: usr/share
+    acl:
+      mode: 0755
+      user: root
+      group: root
+  - name: usr/share/man
+    acl:
+      mode: 0755
+      user: root
+      group: root
+  - name: usr/share/man/man8
+    acl:
+      mode: 0755
+      user: root
+      group: root
+    files: # 41 items
+      - name: tollgate-completion-bash.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 1183
+        mtime: 1782737960
+        hash: a4b6c26525a21822ed9c1034c1e076c44d2ca41ea7ec73415e7a544c86e40548
+      - name: tollgate-completion-fish.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 951
+        mtime: 1782737960
+        hash: 487ca66506d5e7c739500fd05e314d8c1da44fe3dd1d0e14b2f03454129f8690
+      - name: tollgate-completion-powershell.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 902
+        mtime: 1782737960
+        hash: 7f5f4ef58a156c9ca4dfa86f02f299892105becd112f0ba7c148ba1113a80c95
+      - name: tollgate-completion-zsh.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 1231
+        mtime: 1782737960
+        hash: 6e438f7d6fe4472677728e9f281e6b789443580cd8dbb933e387862bedfcf9e1
+      - name: tollgate-completion.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 809
+        mtime: 1782737960
+        hash: 973a92bffbaa3f5c114bab20178592fac7d774de77b25565e49f8292bad8b131
+      - name: tollgate-config-get.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 555
+        mtime: 1782737960
+        hash: 7131963d4d27a13d5ff36697cc2d0a068eecd9fb9033e00939dda05a78975ecb
+      - name: tollgate-config-save-identities.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 621
+        mtime: 1782737960
+        hash: 3f8dcc5eaa855ff66e80b3f718bafaf442b7607d86fe288798213db66a631c3e
+      - name: tollgate-config-save.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 587
+        mtime: 1782737960
+        hash: c8475736158768025d89237e3becbb67c8ccd2e49abbb14196195299008eb883
+      - name: tollgate-config-schema.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 584
+        mtime: 1782737960
+        hash: c6321fba3e62a03cfe9ad57c07fd551866e160a32a5567756af9bb27866bf427
+      - name: tollgate-config-set.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 762
+        mtime: 1782737960
+        hash: 9a16cee7d6ab1ece1c213415772b4225d2a8ab93fa45e2f293d27114c8e8f693
+      - name: tollgate-config.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 726
+        mtime: 1782737960
+        hash: 6c6aa4499b549e757e92f35fe95675d39e5570b3b03126f4bf878eb90b14f6c9
+      - name: tollgate-health.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 514
+        mtime: 1782737960
+        hash: a5ffb64a66514e293c7e5c9923a75de9b169d67dd107d8a6993134b67b9a1699
+      - name: tollgate-logs.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 650
+        mtime: 1782737960
+        hash: 541a5e10e70d0897ab8d714d8fa61d891c6230ef1400699d63468cae5a59406a
+      - name: tollgate-network-private-disable.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 583
+        mtime: 1782737960
+        hash: 75490e0a08d1c692f039fd5c3c5333263c8f2e5402ecfd93c9d3772c78191898
+      - name: tollgate-network-private-enable.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 578
+        mtime: 1782737960
+        hash: de04c16bfa6034b5335cad10094e40eebeb1b10734faf774caf1be7948776357
+      - name: tollgate-network-private-rename.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 575
+        mtime: 1782737960
+        hash: 0b7da044ef2920173410dff7d1da49a883b2001bbf45b9a531a741c8c23e747b
+      - name: tollgate-network-private-set-password.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 664
+        mtime: 1782737960
+        hash: 8c1f945249a8ab77bfd3096371d6b18adcf6a188b291194cda7e9878432561eb
+      - name: tollgate-network-private-status.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 595
+        mtime: 1782737960
+        hash: 9b0c9b49b9b9325b1d73c964a5ec20dba8c78d43c611ec828cc049e209b95e47
+      - name: tollgate-network-private.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 785
+        mtime: 1782737960
+        hash: 3511fe8da96ef6338f55b6b0bcf053c866890c571fe2825bad7b3230fa1a91e6
+      - name: tollgate-network.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 544
+        mtime: 1782737960
+        hash: f21c8216ea0299e86b532e9e142f3e6b86b34838ed10a38675a95b0ac8ab75ff
+      - name: tollgate-restart.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 515
+        mtime: 1782737960
+        hash: 418e6d64fdba0545c0f7b8e6c7856363715cdde7dca2e1eb96db9446a5c64045
+      - name: tollgate-ssl-apply.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 783
+        mtime: 1782737960
+        hash: 3f45ffa561e4c802c03f9776fd91128f8f8b4117b49398b29db543a2eeb90cb7
+      - name: tollgate-ssl-remove.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 607
+        mtime: 1782737960
+        hash: eb3d3d810e475d68f7c8e6c09672367f9c5aff047a52dc8b502c6f214a26be3a
+      - name: tollgate-ssl-status.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 529
+        mtime: 1782737960
+        hash: d5d0fe35de3256d49a05ff29acc4c0f6a24b209a8d3cf223831911d4e8dfcd9d
+      - name: tollgate-ssl.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 617
+        mtime: 1782737960
+        hash: aacc2417a24e4ffbe6020d388315734e4d1e789e202fcf1aca31cf04d6a04f28
+      - name: tollgate-start.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 505
+        mtime: 1782737960
+        hash: 158497981cb46d9c58a9262bf22b5f28a33fdcd2aad0acb8154d113092c63b33
+      - name: tollgate-status.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 534
+        mtime: 1782737960
+        hash: cc52e37f3aa532afef2ad0af15e87ba3bae2c54673888bde7bff333bbb58545f
+      - name: tollgate-stop.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 500
+        mtime: 1782737960
+        hash: e05339e1366ee1d33c7235deb7e4a3baa9d9b90ad3950462391feefdb079a486
+      - name: tollgate-upstream-connect.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 628
+        mtime: 1782737960
+        hash: f71abd1d253b7ebd3301082c9144bb053ab040a287b88f937521e71215821e75
+      - name: tollgate-upstream-list.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 577
+        mtime: 1782737960
+        hash: fd26e8e4acfbd9929d17d96757f40d50d6ba2b963373fc3e60e5560f7a9d23b8
+      - name: tollgate-upstream-remove.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 621
+        mtime: 1782737960
+        hash: 0f327a8cd7372de25d05e7da6eacd9a811bb4ad8043f7c5074e7fd3eae92d85d
+      - name: tollgate-upstream-scan.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 559
+        mtime: 1782737960
+        hash: 231e702e7c0c7aa200cf2f4fb6cc63669a3e3c7bfba462ef0308cb9e986e58c8
+      - name: tollgate-upstream.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 675
+        mtime: 1782737960
+        hash: ba159029730fcb03e54eee9fa2344ba0f4987e6e33489db701a6341a4efdbd96
+      - name: tollgate-version.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 519
+        mtime: 1782737960
+        hash: ddc43623e5c597d405fbabce428ce2bea0e47e1800bcb06759221b7ff2f37db9
+      - name: tollgate-wallet-balance.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 531
+        mtime: 1782737960
+        hash: 73bca1133464ac7b58f8a9c199d3e3186dc85b2309beb8dbd158b5930ab521cc
+      - name: tollgate-wallet-drain-cashu.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 576
+        mtime: 1782737960
+        hash: c63d2329a18ad7c003d742c54f069b8bb61f03dcf45490d7a2654ac0db2c6ea4
+      - name: tollgate-wallet-drain.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 565
+        mtime: 1782737960
+        hash: b7dd737a8e93c7782e221e6aa339be5d3a0b24444011bd61919441f68320bdc9
+      - name: tollgate-wallet-fund.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 556
+        mtime: 1782737960
+        hash: 29726a5688da68b9ea9c7e4aca3bfc200919708f3e9fb6772de7584c0b789313
+      - name: tollgate-wallet-info.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 558
+        mtime: 1782737960
+        hash: 71f27053daa0f320d490780e63c405c46b97954e1a9338e95e1c3856cb891ee7
+      - name: tollgate-wallet.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 665
+        mtime: 1782737960
+        hash: 839729b4d75ffb95a7ac697e3c57552faf48c8082634fb886f484cf920c9616c
+      - name: tollgate.8
+        acl:
+          mode: 0644
+          user: root
+          group: root
+        size: 911
+        mtime: 1782737960
+        hash: e72dcc534f49e0de4ddaf6302dd0537977f1139e5eee6a10d48227392eee7f4a
+scripts:
+  pre-install: |
+    #!/bin/sh
+    if [ -f /etc/tollgate/install.json ]; then
+    	CURRENT_TIMESTAMP=$(date +%s)
+    	if ! jq ".install_time = $CURRENT_TIMESTAMP" /etc/tollgate/install.json > /tmp/install.json.tmp; then
+    		echo "Error: Failed to update install_time using jq" >&2
+    		echo "$(date) - Error: Failed to update install_time using jq" >> /tmp/tollgate-setup.log
+    		exit 1
+    	fi
+    	if ! mv /tmp/install.json.tmp /etc/tollgate/install.json; then
+    		echo "Error: Failed to move temporary file to /etc/tollgate/install.json" >&2
+    		echo "$(date) - Error: Failed to move temporary file to /etc/tollgate/install.json" >> /tmp/tollgate-setup.log
+    		exit 1
+    	fi
+    else
+    	mkdir -p /etc/tollgate
+    	CURRENT_TIMESTAMP=$(date +%s)
+    	if ! echo "{\"install_time\": $CURRENT_TIMESTAMP}" > /etc/tollgate/install.json; then
+    		echo "Error: Failed to create /etc/tollgate/install.json" >&2
+    		echo "$(date) - Error: Failed to create /etc/tollgate/install.json" >> /tmp/tollgate-setup.log
+    		exit 1
+    	fi
+    	echo "$(date) - install_time set to $CURRENT_TIMESTAMP" >> /tmp/tollgate-setup.log
+    fi
+    exit 0
+  post-install: |
+    #!/bin/sh
+    [ "${IPKG_NO_SCRIPT}" = "1" ] && exit 0
+    [ -s ${IPKG_INSTROOT}/lib/functions.sh ] || exit 0
+    . ${IPKG_INSTROOT}/lib/functions.sh
+    export root="${IPKG_INSTROOT}"
+    export pkgname="tollgate-wrt"
+    add_group_and_user
+    default_postinst
+    echo "Running post-installation script: Starting postinst execution"
+    echo "Current working directory: $(pwd)"
+    echo "Current timestamp: $(date)"
+    wait_for_iface() {
+        local iface="$1" count=0
+        while [ $count -lt 15 ]; do
+            [ -d "/sys/class/net/$iface" ] && return 0
+            sleep 1
+            count=$((count + 1))
+        done
+        echo "Warning: $iface did not appear within 15 s" >&2
+        return 1
+    }
+    for script in /etc/uci-defaults/90-tollgate-captive-portal-symlink /etc/uci-defaults/99-tollgate-setup; do
+        if [ -x "$script" ]; then
+            echo "Running $script ..."
+            "$script" || echo "Warning: $script exited with code $?"
+        fi
+    done
+    echo "Restarting network..."
+    /etc/init.d/network restart 2>/dev/null || true
+    wait_for_iface br-lan
+    wait_for_iface br-private || echo "Note: br-private not found — this is expected on devices without a private network configured."
+    echo "Reloading remaining services..."
+    wifi reload 2>/dev/null || true
+    /etc/init.d/firewall reload 2>/dev/null || true
+    /etc/init.d/dnsmasq restart 2>/dev/null || true
+    /etc/init.d/uhttpd restart 2>/dev/null || true
+    /etc/init.d/nodogsplash restart 2>/dev/null || true
+    if [ -x /etc/init.d/tollgate-wrt ]; then
+        /etc/init.d/tollgate-wrt enable 2>/dev/null || true
+        /etc/init.d/tollgate-wrt stop 2>/dev/null || true
+        /etc/init.d/tollgate-wrt start 2>/dev/null || true
+    else
+        echo "Warning: /etc/init.d/tollgate-wrt not found, skipping service start"
+    fi
+    echo "Post-installation script completed successfully"
+    exit 0
+  pre-deinstall: |
+    #!/bin/sh
+    [ -s ${IPKG_INSTROOT}/lib/functions.sh ] || exit 0
+    . ${IPKG_INSTROOT}/lib/functions.sh
+    export root="${IPKG_INSTROOT}"
+    export pkgname="tollgate-wrt"
+    default_prerm
+  pre-upgrade: |
+    #!/bin/sh
+    export PKG_UPGRADE=1
+    if [ -f /etc/tollgate/install.json ]; then
+    	CURRENT_TIMESTAMP=$(date +%s)
+    	if ! jq ".install_time = $CURRENT_TIMESTAMP" /etc/tollgate/install.json > /tmp/install.json.tmp; then
+    		echo "Error: Failed to update install_time using jq" >&2
+    		echo "$(date) - Error: Failed to update install_time using jq" >> /tmp/tollgate-setup.log
+    		exit 1
+    	fi
+    	if ! mv /tmp/install.json.tmp /etc/tollgate/install.json; then
+    		echo "Error: Failed to move temporary file to /etc/tollgate/install.json" >&2
+    		echo "$(date) - Error: Failed to move temporary file to /etc/tollgate/install.json" >> /tmp/tollgate-setup.log
+    		exit 1
+    	fi
+    else
+    	mkdir -p /etc/tollgate
+    	CURRENT_TIMESTAMP=$(date +%s)
+    	if ! echo "{\"install_time\": $CURRENT_TIMESTAMP}" > /etc/tollgate/install.json; then
+    		echo "Error: Failed to create /etc/tollgate/install.json" >&2
+    		echo "$(date) - Error: Failed to create /etc/tollgate/install.json" >> /tmp/tollgate-setup.log
+    		exit 1
+    	fi
+    	echo "$(date) - install_time set to $CURRENT_TIMESTAMP" >> /tmp/tollgate-setup.log
+    fi
+    exit 0
+  post-upgrade: |
+    #!/bin/sh
+    export PKG_UPGRADE=1
+    [ "${IPKG_NO_SCRIPT}" = "1" ] && exit 0
+    [ -s ${IPKG_INSTROOT}/lib/functions.sh ] || exit 0
+    . ${IPKG_INSTROOT}/lib/functions.sh
+    export root="${IPKG_INSTROOT}"
+    export pkgname="tollgate-wrt"
+    add_group_and_user
+    default_postinst
+    echo "Running post-installation script: Starting postinst execution"
+    echo "Current working directory: $(pwd)"
+    echo "Current timestamp: $(date)"
+    wait_for_iface() {
+        local iface="$1" count=0
+        while [ $count -lt 15 ]; do
+            [ -d "/sys/class/net/$iface" ] && return 0
+            sleep 1
+            count=$((count + 1))
+        done
+        echo "Warning: $iface did not appear within 15 s" >&2
+        return 1
+    }
+    for script in /etc/uci-defaults/90-tollgate-captive-portal-symlink /etc/uci-defaults/99-tollgate-setup; do
+        if [ -x "$script" ]; then
+            echo "Running $script ..."
+            "$script" || echo "Warning: $script exited with code $?"
+        fi
+    done
+    echo "Restarting network..."
+    /etc/init.d/network restart 2>/dev/null || true
+    wait_for_iface br-lan
+    wait_for_iface br-private || echo "Note: br-private not found — this is expected on devices without a private network configured."
+    echo "Reloading remaining services..."
+    wifi reload 2>/dev/null || true
+    /etc/init.d/firewall reload 2>/dev/null || true
+    /etc/init.d/dnsmasq restart 2>/dev/null || true
+    /etc/init.d/uhttpd restart 2>/dev/null || true
+    /etc/init.d/nodogsplash restart 2>/dev/null || true
+    if [ -x /etc/init.d/tollgate-wrt ]; then
+        /etc/init.d/tollgate-wrt enable 2>/dev/null || true
+        /etc/init.d/tollgate-wrt stop 2>/dev/null || true
+        /etc/init.d/tollgate-wrt start 2>/dev/null || true
+    else
+        echo "Warning: /etc/init.d/tollgate-wrt not found, skipping service start"
+    fi
+    echo "Post-installation script completed successfully"
+    exit 0
+# data block, size: 2877
+# data block, size: 1388
+# data block, size: 1612
+# data block, size: 962
+# data block, size: 3276
+# data block, size: 607
+# data block, size: 1120
+# data block, size: 185478
+# data block, size: 302
+# data block, size: 880
+# data block, size: 4489
+# data block, size: 10153
+# data block, size: 962
+# data block, size: 4004
+# data block, size: 11035
+# data block, size: 18582
+# data block, size: 431065
+# data block, size: 177
+# data block, size: 43962
+# data block, size: 6496
+# data block, size: 4879
+# data block, size: 16604
+# data block, size: 3278
+# data block, size: 126
+# data block, size: 548
+# data block, size: 6640617
+# data block, size: 47
+# data block, size: 48
+# data block, size: 11763715
+# data block, size: 328
+# data block, size: 1191
+# data block, size: 959
+# data block, size: 910
+# data block, size: 1239
+# data block, size: 817
+# data block, size: 563
+# data block, size: 629
+# data block, size: 595
+# data block, size: 592
+# data block, size: 770
+# data block, size: 734
+# data block, size: 522
+# data block, size: 658
+# data block, size: 591
+# data block, size: 586
+# data block, size: 583
+# data block, size: 672
+# data block, size: 603
+# data block, size: 793
+# data block, size: 552
+# data block, size: 523
+# data block, size: 791
+# data block, size: 615
+# data block, size: 537
+# data block, size: 625
+# data block, size: 513
+# data block, size: 542
+# data block, size: 508
+# data block, size: 636
+# data block, size: 585
+# data block, size: 629
+# data block, size: 567
+# data block, size: 683
+# data block, size: 527
+# data block, size: 539
+# data block, size: 584
+# data block, size: 573
+# data block, size: 564
+# data block, size: 566
+# data block, size: 673
+# data block, size: 919
