@@ -87,6 +87,7 @@ case "$1" in
   run)
     for a in "$@"; do case "$a" in */workspace:ro) SRC="${a%:/workspace:ro}" ;; esac; done
     echo "run feed_src=${SRC:-none}" >> "$STUB_REC"
+    [ -n "${SRC:-}" ] && printf 'feed_src_perm %s\n' "$(stat -c '%a' "$SRC")" >> "$STUB_REC"
     [ -n "${SRC:-}" ] && (cd "$SRC" && find . -type f | sort | while read -r r; do
         printf 'staged %s %s\n' "${r#./}" "$(sha256sum "$r" | awk '{print $1}')"; done) >> "$STUB_REC"
     echo stub-container; exit 0 ;;
@@ -129,6 +130,16 @@ if [ -f "$ART" ] && [ "$(sha256sum "$ART" | awk '{print $1}')" = "$(sha256sum "$
     ok "A7 artifact copied out as $(basename "$ART") with matching sha256"
 else
     bad "A7 artifact copy/name/sha256"
+fi
+
+# A8: the SDK container runs as buildbot(1000); `mktemp -d` is 0700 owned by the
+# invoking uid, so the :ro feed is unreadable whenever the two differ and the build
+# dies far away with "No rule to make target 'package/feeds/tollgate/...'".
+FSPERM="$(awk '$1=="feed_src_perm"{m=$2} END{print m}' "$T/rec")"
+if [ -n "$FSPERM" ] && [ "$(( FSPERM % 10 ))" -ge 5 ]; then
+    ok "A8 :ro feed source traversable by the container's buildbot uid (mode $FSPERM)"
+else
+    bad "A8 :ro feed source not readable by the container user (mode ${FSPERM:-none})"
 fi
 
 printf '\n%d passed, %d failed\n' "$p" "$f"

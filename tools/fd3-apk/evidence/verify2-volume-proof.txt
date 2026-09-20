@@ -1,0 +1,96 @@
+=== 2026-09-20T22:20:01+02:00 docker system df -v (Local Volumes) BEFORE ===
+Local Volumes space usage:
+
+VOLUME NAME                                                        LINKS     SIZE
+buildx_buildkit_local0_state                                       1         55.5MB
+mt00-spike_mt00-postgres-data                                      1         69.7MB
+ea313c4d619daec0b2284dddd1d162c709604bb5abe46154ec326bbd7dbd35a8   1         89B
+
+Build cache usage: 67.54MB
+
+CACHE ID       CACHE TYPE     SIZE      CREATED       LAST USED     USAGE     SHARED
+eatd4cozn7du   regular        0B        6 hours ago   6 hours ago   1         false
+0wyiej8cy6h8   regular        0B        6 hours ago   6 hours ago   1         false
+if7wdupsirvb   regular        0B        6 hours ago   6 hours ago   1         false
+ifzgyajh6plj   regular        0B        6 hours ago   6 hours ago   1         false
+y9nsyk23dztk   regular        0B        6 hours ago   6 hours ago   1         false
+3hyfcrmwazwm   source.local   2.79kB    6 hours ago   6 hours ago   1         false
+8dop7xwtdj6d   source.local   2MB       6 hours ago   6 hours ago   1         false
+x73ibalsrawo   frontend       0B        6 hours ago   6 hours ago   1         false
+b1sz1xsl168z   source.local   114B      6 hours ago   6 hours ago   1         false
+jqqfso2dllg6   regular        0B        6 hours ago   6 hours ago   1         false
+armswf4sdlva   regular        0B        6 hours ago   6 hours ago   1         false
+s2siu18ozas3   regular        2MB       6 hours ago   6 hours ago   1         false
+l10t1m8txtqm   regular        63.5MB    6 hours ago   6 hours ago   1         false
+dangling_before=0
+
+=== run a labelled SDK container exactly as the fixed helper does (--rm) ===
+--- WHILE ALIVE: the container's /builder anonymous volume ---
+volume name=1485bbba78322372355ee2326e19c545fd8cf38f9735f357845c37a76c626295 dest=/builder
+
+1485bbba78322372355ee2326e19c545fd8cf38f9735f357845c37a76c626295 labels=map[com.docker.volume.anonymous:]
+Local Volumes space usage:
+
+VOLUME NAME                                                        LINKS     SIZE
+ea313c4d619daec0b2284dddd1d162c709604bb5abe46154ec326bbd7dbd35a8   1         89B
+1485bbba78322372355ee2326e19c545fd8cf38f9735f357845c37a76c626295   1         1.189GB
+buildx_buildkit_local0_state                                       1         55.5MB
+mt00-spike_mt00-postgres-data                                      1         69.7MB
+
+Build cache usage: 67.54MB
+
+CACHE ID       CACHE TYPE     SIZE      CREATED       LAST USED     USAGE     SHARED
+eatd4cozn7du   regular        0B        6 hours ago   6 hours ago   1         false
+0wyiej8cy6h8   regular        0B        6 hours ago   6 hours ago   1         false
+if7wdupsirvb   regular        0B        6 hours ago   6 hours ago   1         false
+ifzgyajh6plj   regular        0B        6 hours ago   6 hours ago   1         false
+y9nsyk23dztk   regular        0B        6 hours ago   6 hours ago   1         false
+3hyfcrmwazwm   source.local   2.79kB    6 hours ago   6 hours ago   1         false
+8dop7xwtdj6d   source.local   2MB       6 hours ago   6 hours ago   1         false
+x73ibalsrawo   frontend       0B        6 hours ago   6 hours ago   1         false
+b1sz1xsl168z   source.local   114B      6 hours ago   6 hours ago   1         false
+jqqfso2dllg6   regular        0B        6 hours ago   6 hours ago   1         false
+armswf4sdlva   regular        0B        6 hours ago   6 hours ago   1         false
+s2siu18ozas3   regular        2MB       6 hours ago   6 hours ago   1         false
+l10t1m8txtqm   regular        63.5MB    6 hours ago   6 hours ago   1         false
+
+=== cleanup path: docker rm -f -v (helper trap) ===
+sdk-vol-proof
+--- AFTER ---
+Local Volumes space usage:
+
+VOLUME NAME                                                        LINKS     SIZE
+buildx_buildkit_local0_state                                       1         55.5MB
+mt00-spike_mt00-postgres-data                                      1         69.7MB
+ea313c4d619daec0b2284dddd1d162c709604bb5abe46154ec326bbd7dbd35a8   1         89B
+
+Build cache usage: 67.54MB
+
+CACHE ID       CACHE TYPE     SIZE      CREATED       LAST USED     USAGE     SHARED
+eatd4cozn7du   regular        0B        6 hours ago   6 hours ago   1         false
+0wyiej8cy6h8   regular        0B        6 hours ago   6 hours ago   1         false
+if7wdupsirvb   regular        0B        6 hours ago   6 hours ago   1         false
+ifzgyajh6plj   regular        0B        6 hours ago   6 hours ago   1         false
+y9nsyk23dztk   regular        0B        6 hours ago   6 hours ago   1         false
+3hyfcrmwazwm   source.local   2.79kB    6 hours ago   6 hours ago   1         false
+8dop7xwtdj6d   source.local   2MB       6 hours ago   6 hours ago   1         false
+x73ibalsrawo   frontend       0B        6 hours ago   6 hours ago   1         false
+b1sz1xsl168z   source.local   114B      6 hours ago   6 hours ago   1         false
+jqqfso2dllg6   regular        0B        6 hours ago   6 hours ago   1         false
+armswf4sdlva   regular        0B        6 hours ago   6 hours ago   1         false
+s2siu18ozas3   regular        2MB       6 hours ago   6 hours ago   1         false
+l10t1m8txtqm   regular        63.5MB    6 hours ago   6 hours ago   1         false
+dangling_after=0
+
+=== 2026-09-20T22:21:24+02:00 REPRODUCE the pre-fix pattern: docker run (no --rm) + docker rm -f ===
+volume while alive: ca59c26b79b47b11267c14183e05840fdc6f3f0af30a2cce0801e92770715aa8
+sdk-vol-bad
+--- after the PRE-FIX cleanup (docker rm -f, no -v) ---
+DANGLING: ca59c26b79b47b11267c14183e05840fdc6f3f0af30a2cce0801e92770715aa8
+dangling count: 1
+ca59c26b79b47b11267c14183e05840fdc6f3f0af30a2cce0801e92770715aa8 labels=map[com.docker.volume.anonymous:] mountpoint=/var/lib/docker/volumes/ca59c26b79b47b11267c14183e05840fdc6f3f0af30a2cce0801e92770715aa8/_data
+Local Volumes space usage:
+
+=== reclaim it (this host must not keep the demo leak) ===
+ca59c26b79b47b11267c14183e05840fdc6f3f0af30a2cce0801e92770715aa8
+dangling after reclaim: 0

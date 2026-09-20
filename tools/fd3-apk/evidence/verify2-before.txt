@@ -1,0 +1,7 @@
+=== before ===  2026-09-20T22:15:14+02:00
+dangling count before: 0
+omniroute Up 4 days (healthy)
+mt00-postgres Up 4 days (healthy)
+mt00-redis Up 4 days (healthy)
+buildx_buildkit_local0 Up 4 days
+--- volume rows in system df ---
