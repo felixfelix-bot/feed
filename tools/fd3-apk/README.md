@@ -17,6 +17,7 @@ packages them."
 | `package-prebuilt-apk.sh` | stage `packaging/` + verified binaries as a `src-link` feed, run the SDK, copy the `.apk` out |
 | `verify-apk.sh` | metadata + payload + arch + provenance verification of a produced `.apk` |
 | `test-verify-apk.sh` | regression test for `verify-apk.sh` (accepts a good artifact, rejects a truncated one, never passes CLI provenance silently) |
+| `test-package-prebuilt-apk.sh` | regression test for `package-prebuilt-apk.sh` — runs with a stub `docker`, so no SDK: guards (missing version, sha mismatch, wrong REPO_DIR) plus the staged feed must carry the verified bytes byte-for-byte and the artifact must come out under `<name>_<version>_<arch>.apk` |
 | `evidence/fd3-aarch64-apk-verification.txt` | verbatim transcript of the verification for the artifact below |
 
 ## The artifact (FD3, 2026-09-20)
@@ -66,8 +67,9 @@ bash tools/fd3-apk/package-prebuilt-apk.sh
 Verify + test:
 
 ```sh
-bash tools/fd3-apk/verify-apk.sh <artifact.apk>
-bash tools/fd3-apk/test-verify-apk.sh          # 6 assertions, all green
+bash tools/fd3-apk/verify-apk.sh <artifact.apk>        # metadata/payload/arch/provenance
+bash tools/fd3-apk/test-verify-apk.sh                  # 6 assertions
+bash tools/fd3-apk/test-package-prebuilt-apk.sh        # 18 assertions, stub docker (no SDK)
 ```
 
 Inside the SDK container the packaging step is exactly:
