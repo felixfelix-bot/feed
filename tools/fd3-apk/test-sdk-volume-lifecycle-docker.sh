@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# sdk-volume-lint: ignore-file
+# (R2 below REPRODUCES the leaking `docker run --name` + `docker rm -f` pattern
+#  on the real image on purpose; the marker keeps a naive tree lint sweep clean.)
+#
 # Real-docker integration test for the openwrt/sdk anonymous-VOLUME leak fix.
 #
 #   FD3_DOCKER_IT=1 bash tools/fd3-apk/test-sdk-volume-lifecycle-docker.sh
