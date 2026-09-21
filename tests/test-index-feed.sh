@@ -267,6 +267,219 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 6. APKv3 index generation contract: apk-tools3 mkndx -> packages.adb
+# ---------------------------------------------------------------------------
+# MEASURED FACTS (2026-09-21, first-hand, this host):
+#   - OpenWrt 25.12.5 SDK-built packages are APKv3 ("ADBd" magic).
+#   - apk-tools3's `index` applet REJECTS v3 inputs
+#     ("file format not supported (in this applet)") and — worse — when
+#     handed RELATIVE paths it prints "WARNING: File ... is unaccessible"
+#     and silently emits an EMPTY index (0 packages, 138 bytes). A feed
+#     must never publish that: every index generator invocation below is
+#     asserted to (a) use absolute paths, (b) index v3 via `mkndx` into
+#     packages.adb (the index format apk-tools3 consumers read; the
+#     official 25.12.5 feed serves packages.adb — APKINDEX.tar.gz/Packages.gz
+#     are 404 there), and (c) hard-fail when the tool reports 0 packages.
+#   - The OpenWrt SDK container ships apk-tools3 at
+#     /builder/staging_dir/host/bin — NOT on PATH (probe: "apk: not found")
+#     — build-feed.yml must add that dir to PATH.
+#
+# The stub `apk` below pins the generator <-> tool contract without
+# needing a real SDK on every test host; the real toolchain is exercised
+# by the CI `index` job and by the consumption test in the PR.
+
+echo "== 6. APKv3 index generation (mkndx -> packages.adb, guards) =="
+
+GEN_APK="$ROOT/scripts/generate-apk-index.sh"
+V3FIX="$ART/tollgate-wrt-0.5.0-r1-v3.apk"   # created in section 5
+
+# 6a. v3 without any apk on PATH: generator must hard-fail with an
+#     actionable message (conditional — hosts/CI with native apk take
+#     the delegated path tested via the stub below).
+if ! command -v apk >/dev/null 2>&1; then
+    V3SOLO="$TMP/v3solo"; mkdir -p "$V3SOLO"
+    cp "$V3FIX" "$V3SOLO/"
+    if sh "$GEN_APK" "$V3SOLO" "$V3SOLO" >/dev/null 2>&1; then
+        fail "generate-apk-index v3 w/o apk must exit non-zero"
+    else
+        msg=$(sh "$GEN_APK" "$V3SOLO" "$V3SOLO" 2>&1 || true)
+        case "$msg" in
+            *APKv3*|*apk-tools3*|*SDK*) pass "v3 w/o apk: actionable hard-fail" ;;
+            *) fail "v3 w/o apk message not actionable: $msg" ;;
+        esac
+    fi
+else
+    echo "  (native apk present — 6a no-apk sub-case skipped)"
+fi
+
+# 6b. v2 with a broken .PKGINFO, no apk: manual fallback must ABORT on
+#     the unreadable artifact, not skip it and publish a partial index.
+if ! command -v apk >/dev/null 2>&1; then
+    V2BAD="$TMP/v2bad"; mkdir -p "$V2BAD" "$TMP/v2bad-out"
+    printf 'not a tarball' > "$V2BAD/broken.apk"
+    if sh "$GEN_APK" "$V2BAD" "$TMP/v2bad-out" >/dev/null 2>&1; then
+        fail "v2 unreadable .PKGINFO must abort (got silent partial index)"
+    else
+        pass "v2 unreadable .PKGINFO aborts"
+    fi
+else
+    echo "  (native apk present — 6b no-apk sub-case skipped)"
+fi
+
+# Stub apk-tools3: records invocations, emits the real output format
+# ("Index has N packages (of which N are new)"), honors STUB_COUNT.
+STUBBIN="$TMP/stubbin"; mkdir -p "$STUBBIN"
+STUB_LOG="$TMP/stub.log"; export STUB_LOG
+cat > "$STUBBIN/apk" <<'STUB'
+#!/bin/sh
+case "$1" in
+--version) echo "apk-tools 3.0.5 (test stub)"; exit 0 ;;
+adbdump)
+    shift
+    echo '{"name":"tollgate-wrt","arch":"aarch64_cortex-a53"}'
+    exit 0 ;;
+index|mkndx)
+    cmd="$1"; shift
+    out=""; files=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --output|--description)
+                       case "$1" in --output) out="$2" ;; esac; shift 2 ;;
+            --*)       shift ;;
+            *)         files="$files
+$1"; shift ;;
+        esac
+    done
+    { printf 'cmd=%s out=%s files=%s\n' "$cmd" "$out" "$files"; } >> "${STUB_LOG:?}"
+    n=$(printf '%s\n' "$files" | grep -c '\.apk$' || true)
+    [ -z "${STUB_COUNT:-}" ] || n="$STUB_COUNT"
+    echo "Index has $n packages (of which $n are new)"
+    if [ "$cmd" = "mkndx" ]; then
+        printf 'ADBd-STUB packages=%s\n' "$n" > "$out"
+    else
+        d=$(mktemp -d)
+        : > "$d/APKINDEX"
+        [ "$n" -gt 0 ] && printf 'P:stub-pkg\n\n' > "$d/APKINDEX"
+        printf 'stub feed\n' > "$d/DESCRIPTION"
+        ( cd "$d" && tar -czf "$out" APKINDEX DESCRIPTION )
+        rm -rf "$d"
+    fi
+    exit 0 ;;
+*) echo "stub apk: unexpected subcommand: $*" >&2; exit 1 ;;
+esac
+STUB
+chmod +x "$STUBBIN/apk"
+
+# From here on the stub shadows any real apk, making sections below
+# deterministic on every host (and in the CI container).
+PATH="$STUBBIN:$PATH"; export PATH
+
+# 6c. v3 + stub: mkndx is used, output is packages.adb, args carry
+#     --allow-untrusted and ABSOLUTE paths, exit 0.
+V3NDX="$TMP/v3ndx"; rm -rf "$V3NDX"; mkdir -p "$V3NDX" "$TMP/v3ndx-out"
+cp "$V3FIX" "$V3NDX/"
+: > "$STUB_LOG"
+if sh "$GEN_APK" "$V3NDX" "$TMP/v3ndx-out" >/dev/null 2>&1; then
+    [ -f "$TMP/v3ndx-out/packages.adb" ] \
+        && pass "v3 -> packages.adb generated" \
+        || fail "v3 did not produce packages.adb"
+    [ ! -f "$TMP/v3ndx-out/APKINDEX.tar.gz" ] \
+        && pass "v3 does not emit legacy APKINDEX.tar.gz" \
+        || fail "v3 emitted legacy APKINDEX.tar.gz"
+    grep -q '^cmd=mkndx ' "$STUB_LOG" \
+        && pass "v3 uses mkndx applet" \
+        || fail "v3 not routed to mkndx"
+    grep -q ' --allow-untrusted' "$STUB_LOG" 2>/dev/null || \
+    grep -qE 'allow-untrusted' "$STUB_LOG" \
+        && pass "mkndx invoked with --allow-untrusted" \
+        || fail "mkndx missing --allow-untrusted (log: $(cat "$STUB_LOG"))"
+    case "$(grep '^cmd=mkndx ' "$STUB_LOG" | tail -n1)" in
+        *"out=$TMP/v3ndx-out/packages.adb"*) pass "mkndx --output is absolute" ;;
+        *) fail "mkndx --output not absolute: $(grep '^cmd=mkndx ' "$STUB_LOG")" ;;
+    esac
+    case "$(sed -n 's/^cmd=mkndx out=[^ ]* files=//p' "$STUB_LOG" | tail -n1)" in
+        /*) pass "mkndx file args are absolute" ;;
+        *) fail "mkndx file args not absolute: $(cat "$STUB_LOG")" ;;
+    esac
+else
+    fail "generate-apk-index v3+stub must exit 0 (got failure)"
+    sed -n 's/^/    /p' "$STUB_LOG" 2>/dev/null
+fi
+
+# 6d. EMPTY-INDEX GUARD: the tool reporting 0 packages for 1+ inputs is
+#     a hard error — an empty index must never be published.
+rm -rf "$TMP/v3ndx-out"; mkdir -p "$TMP/v3ndx-out"
+STUB_COUNT=0 sh "$GEN_APK" "$V3NDX" "$TMP/v3ndx-out" >/dev/null 2>&1 \
+    && fail "v3 mkndx count=0 must hard-fail" \
+    || pass "v3 mkndx count=0 hard-fails (empty-index guard)"
+
+# 6e. Same guard on the legacy v2 `index` path.
+V2DIR="$TMP/v2only"; rm -rf "$V2DIR" "$TMP/v2-out"; mkdir -p "$V2DIR" "$TMP/v2-out"
+make_apk "$V2DIR/tollgate-wrt-0.5.0-r1.apk" tollgate-wrt 0.5.0-r1 x86_64
+STUB_COUNT=0 sh "$GEN_APK" "$V2DIR" "$TMP/v2-out" >/dev/null 2>&1 \
+    && fail "v2 index count=0 must hard-fail" \
+    || pass "v2 index count=0 hard-fails (empty-index guard)"
+rm -rf "$TMP/v2-out"; mkdir -p "$TMP/v2-out"
+if sh "$GEN_APK" "$V2DIR" "$TMP/v2-out" >/dev/null 2>&1; then
+    [ -f "$TMP/v2-out/APKINDEX.tar.gz" ] \
+        && pass "v2 -> APKINDEX.tar.gz generated" \
+        || fail "v2 did not produce APKINDEX.tar.gz"
+    tar -xzOf "$TMP/v2-out/APKINDEX.tar.gz" APKINDEX 2>/dev/null | grep -q '^P:' \
+        && pass "v2 APKINDEX has a package record" \
+        || fail "v2 APKINDEX has no P: record"
+else
+    fail "generate-apk-index v2+stub must exit 0"
+fi
+
+# 6f. index-feed.sh end-to-end with a v3 artifact + stub apk: the run
+#     succeeds and lands packages.adb under the arch-tuple dir.
+V3E2E="$TMP/v3e2e"; rm -rf "$V3E2E" "$TMP/feed-v3e2e"; mkdir -p "$V3E2E"
+cp "$V3FIX" "$V3E2E/"
+if sh "$INDEX_FEED" "$V3E2E" "$TMP/feed-v3e2e" >/dev/null 2>&1; then
+    [ -f "$TMP/feed-v3e2e/aarch64_cortex-a53/packages.adb" ] \
+        && pass "index-feed v3 -> <tuple>/packages.adb" \
+        || fail "index-feed v3 missing <tuple>/packages.adb"
+else
+    fail "index-feed v3+stub must exit 0"
+fi
+
+# 6g. Workflow contract pins (build-feed.yml must be deployable as-is):
+WF="$ROOT/.github/workflows/build-feed.yml"
+grep -q 'staging_dir/host/bin' "$WF" \
+    && pass "workflow puts SDK host apk-tools on PATH" \
+    || fail "workflow missing PATH fix for host apk-tools"
+grep -q "name 'packages.adb'" "$WF" \
+    && pass "workflow index count includes packages.adb" \
+    || fail "workflow index count misses packages.adb"
+grep -q 'packages.adb|Packages' "$WF" || grep -q 'APKINDEX.tar.gz|Packages.gz|Packages|packages.adb' "$WF" \
+    && pass "workflow release-flatten handles packages.adb" \
+    || fail "workflow release-flatten misses packages.adb"
+
+# ---------------------------------------------------------------------------
+# 7. generate-packages-index.sh must abort on unreadable .ipk, not skip
+# ---------------------------------------------------------------------------
+# index-feed.sh is safe (artifact-arch.sh gates unreadable artifacts), but
+# the opkg generator is also a standalone tool: a MIXED dir (one good, one
+# corrupt .ipk) used to index the good one and silently drop the corrupt
+# one — a partial feed published as success. It must abort instead.
+
+echo "== 7. opkg generator: unreadable .ipk aborts (no silent partial feed) =="
+
+GEN_IPK="$ROOT/scripts/generate-packages-index.sh"
+IPKMIX="$TMP/ipkmix"; rm -rf "$IPKMIX" "$TMP/ipk-out"; mkdir -p "$IPKMIX" "$TMP/ipk-out"
+make_ipk "$IPKMIX/good.ipk" tollgate-wrt 0.5.0-r1 x86_64
+printf 'garbage not an ar archive' > "$IPKMIX/corrupt.ipk"
+if sh "$GEN_IPK" "$IPKMIX" "$TMP/ipk-out" >/dev/null 2>&1; then
+    fail "opkg generator must abort on corrupt .ipk (published partial index)"
+else
+    msg=$(sh "$GEN_IPK" "$IPKMIX" "$TMP/ipk-out" 2>&1 || true)
+    case "$msg" in
+        *corrupt.ipk*) pass "opkg generator aborts naming the corrupt artifact" ;;
+        *) fail "opkg abort message lacks artifact name: $msg" ;;
+    esac
+fi
+
+# ---------------------------------------------------------------------------
 
 echo ""
 if [ "$fails" -eq 0 ]; then
