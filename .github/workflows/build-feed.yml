@@ -157,8 +157,11 @@ jobs:
           || startsWith(github.event.workflow_run.head_branch, 'v'))
     # Index generation is host-arch-independent, but it MUST see apk-tools3:
     # OpenWrt 25.12 packages are APKv3 (ADBd) — not tarballs, not parseable
-    # by the POSIX fallback. The SDK container ships apk. Pinned to the same
-    # image family as validate-feed's build-sdk matrix.
+    # by the POSIX fallback. The SDK image ships apk-tools3 at
+    # /builder/staging_dir/host/bin, which is NOT on the container's default
+    # PATH (measured in-container: "apk: not found") — every run step below
+    # prepends it. Pinned to the same image family as validate-feed's
+    # build-sdk matrix.
     container:
       image: openwrt/sdk:x86-64-v25.12.5
       options: --user root
@@ -182,6 +185,7 @@ jobs:
           fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "Indexing release: $tag"
+          export PATH="/builder/staging_dir/host/bin:$PATH"
           apk --version
 
       # Path A: canonical per-target tree from the bridge job.
@@ -204,6 +208,8 @@ jobs:
         id: gen
         run: |
           set -eu
+          export PATH="/builder/staging_dir/host/bin:$PATH"
+          apk --version
           mkdir -p feed
           if [ -d bridge-packages ]; then
             # Path A: one index-feed pass per SDK-target dir. index-feed.sh
@@ -232,7 +238,7 @@ jobs:
             # Paths B/C: single flat dir, mixed arches, unique filenames.
             sh scripts/index-feed.sh "$PWD/artifacts" "$PWD/feed"
           fi
-          n=$(find feed -type f \( -name 'Packages.gz' -o -name 'APKINDEX.tar.gz' \) | wc -l | tr -d ' ')
+          n=$(find feed -type f \( -name 'Packages.gz' -o -name 'APKINDEX.tar.gz' -o -name 'packages.adb' \) | wc -l | tr -d ' ')
           echo "indexed=$n" >> "$GITHUB_OUTPUT"
           [ "$n" -gt 0 ] || { echo "::error::no indices generated"; exit 1; }
           echo "=== feed tree ==="; find feed -type f | sort
@@ -271,7 +277,7 @@ jobs:
           else
             gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
               --verify-tag --title "Feed $TAG" \
-              --notes "Automated feed release. Packages are arch-tuple-suffixed for the flat asset list; per-tuple indices (APKINDEX.tar.gz / Packages.gz) and the self-contained feed tree are attached here, and the gh-pages branch is the stable feed URL. See docs/feed-index.md."
+              --notes "Automated feed release. Packages are arch-tuple-suffixed for the flat asset list; per-tuple indices (packages.adb for apk-tools3 consumers, APKINDEX.tar.gz / Packages.gz for legacy) and the self-contained feed tree are attached here, and the gh-pages branch is the stable feed URL. See docs/feed-index.md."
           fi
 
       - name: Upload assets (tuple-suffixed packages + indices)
@@ -291,7 +297,7 @@ jobs:
             tuple=$(basename "$(dirname "$f")")
             base=$(basename "$f")
             case "$base" in
-              APKINDEX.tar.gz|Packages.gz|Packages) cp "$f" "flat/${tuple}-${base}" ;;
+              APKINDEX.tar.gz|Packages.gz|Packages|packages.adb) cp "$f" "flat/${tuple}-${base}" ;;
               *) ext=${base##*.}; stem=${base%.*}; cp "$f" "flat/${stem}_${tuple}.${ext}" ;;
             esac
           done

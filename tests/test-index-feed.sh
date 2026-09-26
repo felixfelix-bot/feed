@@ -340,18 +340,20 @@ adbdump)
     exit 0 ;;
 index|mkndx)
     cmd="$1"; shift
-    out=""; files=""
+    out=""; files=""; flags=""
     while [ $# -gt 0 ]; do
         case "$1" in
             --output|--description)
                        case "$1" in --output) out="$2" ;; esac; shift 2 ;;
-            --*)       shift ;;
-            *)         files="$files
-$1"; shift ;;
+            --*)       flags="${flags:+$flags }$1"; shift ;;
+            *)         files="${files:+$files }$1"; shift ;;
         esac
     done
-    { printf 'cmd=%s out=%s files=%s\n' "$cmd" "$out" "$files"; } >> "${STUB_LOG:?}"
-    n=$(printf '%s\n' "$files" | grep -c '\.apk$' || true)
+    # Record flags AND inputs on one line: `files=` is followed directly by
+    # the (space-joined) absolute input paths so section 6c can assert both
+    # that the flags reached the tool and that the paths are absolute.
+    { printf 'cmd=%s out=%s files=%s flags=%s\n' "$cmd" "$out" "$files" "$flags"; } >> "${STUB_LOG:?}"
+    n=$(printf '%s\n' "$files" | tr ' ' '\n' | grep -c '\.apk$' || true)
     [ -z "${STUB_COUNT:-}" ] || n="$STUB_COUNT"
     echo "Index has $n packages (of which $n are new)"
     if [ "$cmd" = "mkndx" ]; then

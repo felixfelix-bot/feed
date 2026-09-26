@@ -21,11 +21,13 @@
 #
 #   <output-dir>/<arch>/Packages         (opkg, uncompressed — kept for debugging)
 #   <output-dir>/<arch>/Packages.gz      (opkg feed index)
-#   <output-dir>/<arch>/APKINDEX.tar.gz  (apk feed index)
+#   <output-dir>/<arch>/packages.adb     (apk-tools3 feed index — APKv3/ADBd inputs)
+#   <output-dir>/<arch>/APKINDEX.tar.gz  (apk-tools2 feed index — APKv2 inputs)
 #
 # Architectures are NOT hard-coded: whatever arches the artifacts declare are
 # the arches that get indexed. An arch with only .ipk files gets only a
-# Packages.gz; an arch with only .apk files gets only an APKINDEX.tar.gz.
+# Packages.gz; an arch with only .apk files gets packages.adb (APKv3) or
+# APKINDEX.tar.gz (APKv2), depending on the input format.
 #
 # Exit codes:
 #   0  success — at least one index generated, OR no artifacts present at all
@@ -167,7 +169,7 @@ done
 
 echo ""
 echo "==> done: $indexed index/indices generated under $OUTPUT_DIR"
-find "$OUTPUT_DIR" -maxdepth 2 \( -name 'Packages.gz' -o -name 'APKINDEX.tar.gz' \) -type f \
+find "$OUTPUT_DIR" -maxdepth 2 \( -name 'Packages.gz' -o -name 'APKINDEX.tar.gz' -o -name 'packages.adb' \) -type f \
     | sort | while IFS= read -r p; do
         printf '   %s  (%s bytes)\n' "$p" "$(wc -c < "$p")"
     done

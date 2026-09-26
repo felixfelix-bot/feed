@@ -21,7 +21,7 @@
 #   2  no .ipk files found
 #
 # Part of the TollGate OpenWrt feed pipeline.
-# See ~/net4sats/PLAN-openwrt-feed.md Phase 1 (task F1.1).
+# See docs/feed-index.md (index generation strategy).
 
 set -eu
 
@@ -143,18 +143,21 @@ if [ -z "$ipk_list" ]; then
 fi
 
 count=0
-# Write Packages index
+# Write Packages index. An .ipk whose control cannot be extracted is a
+# HARD failure (abort naming the file), not a skip: a partial index must
+# never publish. (index-feed.sh already gates arch-readability upstream;
+# this guard makes the standalone tool safe by itself.)
 : > "$PACKAGES_FILE"
 
 echo "$ipk_list" | while IFS= read -r ipk; do
     filename="$(basename "$ipk")"
     size="$(stat -c%s "$ipk" 2>/dev/null || stat -f%z "$ipk" 2>/dev/null)"
-    sha256="$(sha256sum "$ipk" | cut -d' ' -f1)"
+    sha256="$(sha256sum "$ipk" | cut -d ' ' -f1)"
 
-    control_text="$(extract_control "$ipk")" || {
-        err "skipping (control extraction failed): $filename"
-        continue
-    }
+    if ! control_text="$(extract_control "$ipk")"; then
+        echo "ERROR: control extraction failed for $filename — aborting; a partial index must not publish" >&2
+        exit 1
+    fi
 
     package="$(get_field "$control_text" "Package")"
     version="$(get_field "$control_text" "Version")"

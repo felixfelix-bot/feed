@@ -1,18 +1,36 @@
 #!/bin/sh
 # generate-apk-index.sh
 #
-# Generate an apk repository index (APKINDEX.tar.gz) from a directory of .apk files.
+# Generate an apk repository index from a directory of .apk files.
 #
 # Usage:  generate-apk-index.sh <apk-dir> [output-dir]
 #   apk-dir    Directory containing *.apk files
-#   output-dir Where to write APKINDEX.tar.gz (default: apk-dir)
+#   output-dir Where to write the index (default: apk-dir)
 #
-# Strategy:
-#   1. If the `apk index` command is available (apk-tools), use it (authoritative).
-#   2. Otherwise fall back to manual generation by parsing each .apk's metadata
-#      (APKv2 is a tar.gz: control data in .PKGINFO inside the tarball).
+# Which index file is produced depends on the INPUT format (detected per
+# file via magic bytes) and on which `apk` is available:
 #
-# See: ~/net4sats/PLAN-openwrt-feed.md Phase 1
+#   APKv3 (ADBd — OpenWrt 25.12+ SDK output)  -> packages.adb via `apk mkndx`
+#   APKv2 (tar.gz with .PKGINFO)              -> APKINDEX.tar.gz via `apk index`
+#
+# Both are hard-fail-loud paths:
+#   - v3 files REQUIRE a native apk-tools3 (`index` cannot read v3:
+#     "file format not supported (in this applet)" — measured 2026-09-21
+#     against apk-tools 3.0.5/3.0.8; worse, with relative paths `index`
+#     prints "WARNING: ... unaccessible" and emits an EMPTY index).
+#   - ALL paths passed to the native apk are ABSOLUTE (see above).
+#   - If the tool reports fewer indexed packages than there are inputs,
+#     that is a hard error: an empty/partial index must never publish.
+#
+# The v3 path is why CI's `index` job runs inside the OpenWrt SDK
+# container (host apk-tools at /builder/staging_dir/host/bin — the
+# target-rootfs apk is NOT on the container PATH).
+#
+#   packages.adb is the index apk-tools3 consumers fetch (OpenWrt's
+#   official 25.12.5 feed serves packages.adb; APKINDEX.tar.gz 404s).
+#   v2 targets (24.10 era) read APKINDEX.tar.gz, so v2 inputs keep it.
+#
+# See docs/feed-index.md.
 set -eu
 
 usage() {
@@ -31,11 +49,11 @@ mkdir -p "$OUT_DIR"
 export TMPDIR="$OUT_DIR/.tmp"
 mkdir -p "$TMPDIR"
 
-# Absolutize OUT_DIR: the tar step cds into a temp dir, so a relative OUT_DIR
-# would resolve against the wrong CWD.
+# Absolutize both dirs (native apk mis-handles relative paths silently).
+APK_DIR=$(cd "$APK_DIR" && pwd)
 OUT_DIR=$(cd "$OUT_DIR" && pwd)
 
-# Collect apk files (null-delimited for safety with spaces)
+# Collect apk files (sorted for determinism; absolute paths).
 apks=$(find "$APK_DIR" -maxdepth 1 -type f -name '*.apk' | sort)
 apk_count=$(printf '%s\n' "$apks" | grep -c '\.apk$' || true)
 
@@ -43,42 +61,84 @@ if [ "$apk_count" -eq 0 ]; then
     echo "warning: no .apk files in '$APK_DIR' — generating empty index" >&2
 fi
 
-# ---------------------------------------------------------------------------
-# APKv3 guard. OpenWrt 25.12 SDKs produce apk-tools3 ADB packages (magic
-# "ADBd"): NOT tarballs and not parseable by the manual fallback below. If
-# any input is v3 and no native `apk` exists, fail loudly instead of
-# silently emitting an empty index. (Run the indexer inside an OpenWrt SDK
-# container — it ships apk-tools3 — or pre-convert to v2.)
-# ---------------------------------------------------------------------------
-if ! command -v apk >/dev/null 2>&1; then
-    for a in $apks; do
-        [ -f "$a" ] || continue
-        if [ "$(head -c 4 "$a" 2>/dev/null || true)" = "ADBd" ]; then
-            echo "error: $(basename "$a") is APKv3 (ADBd) and no native 'apk' is in PATH — cannot index. Use an OpenWrt SDK container (ships apk-tools3)." >&2
-            exit 1
-        fi
-    done
-fi
+# Classify inputs by magic bytes.
+v3_files=""
+v2_files=""
+for a in $apks; do
+    [ -f "$a" ] || continue
+    if [ "$(head -c 4 "$a" 2>/dev/null || true)" = "ADBd" ]; then
+        v3_files="$v3_files $a"
+    else
+        v2_files="$v2_files $a"
+    fi
+done
+v3_count=$(printf '%s' "$v3_files" | wc -w | tr -d ' ')
+v2_count=$(printf '%s' "$v2_files" | wc -w | tr -d ' ')
 
-# ---------------------------------------------------------------- strategy 1
+# ---------------------------------------------------------------------------
+# Empty-index guard, shared by both native paths: the tool's own "Index
+# has N packages" report is the truth — if it indexed fewer packages than
+# there are input files, abort (never publish a silently-truncated index;
+# a real trigger is apk-tools3's relative-path "unaccessible" WARNING).
+# ---------------------------------------------------------------------------
+assert_indexed_all() { # <expected-count> <tool-output>
+    expected=$1; report=$2
+    got=$(printf '%s\n' "$report" | sed -n 's/^Index has \([0-9][0-9]*\) packages.*/\1/p' | head -n1)
+    [ -n "$got" ] || got=0
+    if [ "$got" -lt "$expected" ]; then
+        echo "ERROR: apk indexed $got package(s) but $expected input(s) were present — refusing to publish a partial/empty index. (Relative paths and unreadable inputs make apk-tools3 silently skip files: always pass ABSOLUTE paths; check the WARNING lines above.)" >&2
+        exit 1
+    fi
+}
+
 if command -v apk >/dev/null 2>&1; then
-    echo "==> using native 'apk index'" >&2
-    # apk index writes APKINDEX..tar.gz in CWD
-    tmp=$(mktemp -d)
-    trap 'rm -rf "$tmp"' EXIT
-    # shellcheck disable=SC2086
-    ( cd "$tmp" && apk index \
+    # ---------------------------------------------------------------- strategy 1
+    if [ "$v3_count" -gt 0 ]; then
+        echo "==> using native 'apk mkndx' ($v3_count APKv3 input(s))" >&2
+        # CI artifacts are unsigned: --allow-untrusted is required to index
+        # them (mirrors apk-tools' own flag for local index building).
+        # shellcheck disable=SC2086
+        report=$(apk mkndx \
+            --allow-untrusted \
+            --output "$OUT_DIR/packages.adb" \
+            $v3_files 2>&1) || { echo "$report" >&2; echo "ERROR: apk mkndx failed" >&2; exit 1; }
+        printf '%s\n' "$report" >&2
+        assert_indexed_all "$v3_count" "$report"
+        echo "==> wrote $OUT_DIR/packages.adb (apk mkndx, $v3_count packages)" >&2
+    fi
+    if [ "$v2_count" -gt 0 ]; then
+        echo "==> using native 'apk index' ($v2_count APKv2 input(s))" >&2
+        # apk index writes the tarball index for APKv2 (24.10-era consumers).
+        # shellcheck disable=SC2086
+        report=$(apk index \
             --output "$OUT_DIR/APKINDEX.tar.gz" \
-            --description "net4sats feed" \
-            $apks )
-    echo "==> wrote $OUT_DIR/APKINDEX.tar.gz (apk index, $apk_count packages)" >&2
+            --description "tollgate feed" \
+            $v2_files 2>&1) || { echo "$report" >&2; echo "ERROR: apk index failed" >&2; exit 1; }
+        printf '%s\n' "$report" >&2
+        assert_indexed_all "$v2_count" "$report"
+        echo "==> wrote $OUT_DIR/APKINDEX.tar.gz (apk index, $v2_count packages)" >&2
+    fi
+    [ "$((v3_count + v2_count))" -gt 0 ] || exit 0
     exit 0
 fi
 
+# ---------------------------------------------------------------------------
+# No native apk: v3 is impossible (fail loudly, actionable), v2 falls back
+# to the POSIX parser below.
+# ---------------------------------------------------------------------------
+if [ "$v3_count" -gt 0 ]; then
+    for a in $v3_files; do
+        echo "error: $(basename "$a") is APKv3 (ADBd) and no native 'apk' is in PATH — cannot index. Use an OpenWrt SDK container (host apk-tools3 at /builder/staging_dir/host/bin) or pre-convert to v2." >&2
+    done
+    exit 1
+fi
+
 # ---------------------------------------------------------------- strategy 2
-# Manual fallback. APKv2 packages are gzip-compressed tarballs whose first
-# member is .PKGINFO, a list of `key = value` lines. We build an APKINDEX
-# record per package using the documented flag prefixes.
+# Manual fallback for APKv2-only inputs. APKv2 packages are gzip-compressed
+# tarballs whose first member is .PKGINFO, a list of `key = value` lines.
+# We build an APKINDEX record per package using the documented flag
+# prefixes. An unreadable package ABORTS the run — skipping it would
+# silently publish a partial index.
 #
 # Reference flags (Alpine apk-tools):
 #   P package name        V version          A arch
@@ -89,15 +149,15 @@ fi
 #   l license             u url
 #
 # Records are newline-separated by a blank line.
-echo "==> 'apk index' not found; building APKINDEX manually" >&2
+echo "==> 'apk index' not found; building APKINDEX manually (APKv2 only)" >&2
 
 INDEX_FILE=$(mktemp)
 DESC_FILE=$(mktemp)
 trap 'rm -f "$INDEX_FILE" "$DESC_FILE"' EXIT
 
-printf 'net4sats feed\n' > "$DESC_FILE"
+printf 'tollgate feed\n' > "$DESC_FILE"
 
-# Requires tar + gzip (busybox tar is fine). GNU awk optional; we use POSIX sh.
+indexed=0
 for apk in $apks; do
     [ -f "$apk" ] || continue
     base=$(basename "$apk")
@@ -105,7 +165,10 @@ for apk in $apks; do
 
     # Extract .PKGINFO member from the gzip tarball.
     pkginfo=$(tar -xzOf "$apk" .PKGINFO 2>/dev/null || true)
-    [ -n "$pkginfo" ] || { echo "warn: $base has no .PKGINFO, skipping" >&2; continue; }
+    if [ -z "$pkginfo" ]; then
+        echo "error: $base has no readable .PKGINFO (not an APKv2 tarball?) — aborting; a partial index must not publish" >&2
+        exit 1
+    fi
 
     # Helper: read first value for a PKGINFO key.
     field() { printf '%s\n' "$pkginfo" | sed -n "s/^$1 = \\(.*\\)$/\\1/p" | head -n1; }
@@ -140,15 +203,22 @@ for apk in $apks; do
         [ -n "$install_if" ] && printf 'i:%s\n' "$install_if"
         [ -n "$desc" ]    && printf 'D:%s\n'    "$desc"
         [ -n "$url" ]     && printf 'u:%s\n'    "$url"
-        [ -n "$license" ] && printf 'l:%s\n'    "$license"
-        [ -n "$origin" ]  && printf 'o:%s\n'    "$origin"
-        [ -n "$maint" ]   && printf 'm:%s\n'    "$maint"
+        [ -n "$license" ] && printf 'l:%s\n'   "$license"
+        [ -n "$origin" ]  && printf 'o:%s\n'   "$origin"
+        [ -n "$maint" ]   && printf 'm:%s\n'   "$maint"
         [ -n "$builddate" ] && printf 't:%s\n'  "$builddate"
         printf 'U:%s\n' "$size"
-        [ -n "$commit" ]  && printf 'c:%s\n'    "$commit"
+        [ -n "$commit" ]  && printf 'c:%s\n'  "$commit"
         printf '\n'
     } >> "$INDEX_FILE"
+    indexed=$((indexed + 1))
 done
+
+# Empty-index guard for the manual path too (expected = inputs present).
+if [ "$indexed" -lt "$apk_count" ]; then
+    echo "error: manual indexer handled $indexed of $apk_count input(s) — aborting; a partial index must not publish" >&2
+    exit 1
+fi
 
 # ---------------------------------------------------------------- tar+gzip
 # APKINDEX.tar.gz is a gzip tarball containing APKINDEX and DESCRIPTION
@@ -160,4 +230,4 @@ cp "$DESC_FILE"  "$tmp_tar/DESCRIPTION"
 
 ( cd "$tmp_tar" && tar -czf "$OUT_DIR/APKINDEX.tar.gz" APKINDEX DESCRIPTION )
 
-echo "==> wrote $OUT_DIR/APKINDEX.tar.gz (manual, $apk_count packages)" >&2
+echo "==> wrote $OUT_DIR/APKINDEX.tar.gz (manual, $indexed packages)" >&2
