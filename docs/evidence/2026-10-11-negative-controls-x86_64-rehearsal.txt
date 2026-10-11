@@ -1,0 +1,28 @@
+== negative controls 2026-10-11T16:48:55Z (fresh container each) ==
+
+### K. signed index, truncated payload (fresh container)
+ [http://127.0.0.1:8123/testing-corrupt/25.12/x86_64/packages.adb]
+OK: 11248 distinct packages available
+exit=0
+(1/2) Installing jq (1.8.1-r2)
+  Executing jq-1.8.1-r2.post-install
+(2/2) Installing tollgate-wrt (0.6.0_alpha2-r1)
+ERROR: tollgate-wrt-0.6.0_alpha2-r1: failed to extract usr/bin/tollgate: Connection aborted
+ERROR: tollgate-wrt-0.6.0_alpha2-r1: Connection aborted
+1 error; 11.7 MiB in 137 packages
+exit=1
+--- installed? ---
+tollgate-wrt NOT installed
+
+### L. unsigned index (fresh container)
+WARNING: updating and opening http://127.0.0.1:8123/testing-unsigned/25.12/x86_64/packages.adb: UNTRUSTED signature
+1 unavailable, 0 stale; 11247 distinct packages available
+exit=1
+WARNING: updating and opening http://127.0.0.1:8123/testing-unsigned/25.12/x86_64/packages.adb: UNTRUSTED signature
+ERROR: unable to select packages:
+  tollgate-wrt (no such package):
+    required by: world[tollgate-wrt]
+exit=1
+--- installed? ---
+tollgate-wrt NOT installed
+== done ==

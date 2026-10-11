@@ -97,6 +97,12 @@ Full design, the measured facts (including one correction to the consultant
 memo about opkg signature checking), the hand-runnable commands and the tests:
 [`docs/feed-index-publishing.md`](docs/feed-index-publishing.md).
 
+The operator-facing **consumption** procedure — install, verify, pin, roll back,
+remove, and the failure messages with what they mean — is
+[`docs/feed-consumption-install.md`](docs/feed-consumption-install.md), with the
+real `apk`/`opkg` transcripts it is built from committed under
+[`docs/evidence/`](docs/evidence/).
+
 ## Version identity
 
 Two strings, one release, both proven with the real comparison tools rather

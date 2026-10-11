@@ -1,0 +1,78 @@
+== probes 2026-10-11T16:47:47Z ==
+testing            index sha256 50d39d450b8ce754
+testing-unsigned   index sha256 63f10311b3432402
+testing-corrupt    index sha256 50d39d450b8ce754
+testing-copy       index sha256 50d39d450b8ce754
+t_d41ef5b5-probes.sh: line 10: /home/c03rad0r/rc-lab/serve/testing-otherarch/25.12/x86_64/packages.adb: No such file or directory
+testing-otherarch  index sha256 
+key installed: openwrt-25.12.pem tollgate-testing.pem 
+
+### 1. CONTROL: full index URL, signed, matching arch
+ [http://127.0.0.1:8123/testing/25.12/x86_64/packages.adb]
+OK: 11248 distinct packages available
+exit=0
+tollgate-wrt policy:
+  0.6.0_alpha2-r1:
+    http://127.0.0.1:8123/testing/25.12/x86_64/packages.adb
+exit=0
+
+### 2. directory-form repository line (apk appends /<arch>/APKINDEX.tar.gz)
+ERROR: wget: exited with error 8
+WARNING: updating and opening http://127.0.0.1:8123/testing/25.12/x86_64/x86_64/APKINDEX.tar.gz: unexpected end of file
+1 unavailable, 0 stale; 11247 distinct packages available
+exit=1
+WARNING: opening from cache http://127.0.0.1:8123/testing/25.12/x86_64/x86_64/APKINDEX.tar.gz: No such file or directory
+exit=0
+
+### 3. index URL that 404s
+ERROR: wget: exited with error 8
+WARNING: updating and opening http://127.0.0.1:8123/testing/25.12/x86_64/packages.adb.missing/x86_64/APKINDEX.tar.gz: unexpected end of file
+1 unavailable, 0 stale; 11247 distinct packages available
+exit=1
+ERROR: wget: exited with error 8
+WARNING: updating and opening http://127.0.0.1:8123/testing/25.12/x86_64/packages.adb.missing/x86_64/APKINDEX.tar.gz: unexpected end of file
+ERROR: unable to select packages:
+  tollgate-wrt (no such package):
+    required by: world[tollgate-wrt]
+exit=1
+
+### 4. feed path whose index is for another arch (mipsel_24kc)
+ [http://127.0.0.1:8123/testing-otherarch/25.12/mipsel_24kc/packages.adb]
+OK: 11248 distinct packages available
+exit=0
+tollgate-wrt policy:
+  0.6.0_alpha1-r1:
+    http://127.0.0.1:8123/testing-otherarch/25.12/mipsel_24kc/packages.adb
+exit=0
+ERROR: unable to select packages:
+  tollgate-wrt-0.6.0_alpha1-r1:
+    error: uninstallable
+    arch: mipsel_24kc
+    satisfies: world[tollgate-wrt]
+exit=1
+
+### 5. identical index bytes served from a different path (testing-copy)
+ [http://127.0.0.1:8123/testing-copy/25.12/x86_64/packages.adb]
+OK: 11248 distinct packages available
+exit=0
+(1/2) Installing jq (1.8.1-r2)
+  Executing jq-1.8.1-r2.post-install
+(2/2) Installing tollgate-wrt (0.6.0_alpha2-r1)
+OK: 39.1 MiB in 138 packages
+exit=0
+
+### 6. signed index, truncated payload (4 MB of 15 MB served)
+ [http://127.0.0.1:8123/testing-corrupt/25.12/x86_64/packages.adb]
+OK: 11248 distinct packages available
+exit=0
+OK: 39.1 MiB in 138 packages
+exit=0
+
+### 7. unsigned index (no key can trust it)
+WARNING: updating and opening http://127.0.0.1:8123/testing-unsigned/25.12/x86_64/packages.adb: UNTRUSTED signature
+1 unavailable, 0 stale; 11248 distinct packages available
+exit=1
+WARNING: updating and opening http://127.0.0.1:8123/testing-unsigned/25.12/x86_64/packages.adb: UNTRUSTED signature
+OK: 39.1 MiB in 138 packages
+exit=0
+== done ==

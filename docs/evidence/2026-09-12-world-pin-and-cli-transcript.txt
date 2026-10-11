@@ -1,0 +1,159 @@
+apk update exit=0
+
+### A. install WITHOUT a version pin (the documented install command)
+exit=0
+(2/2) Installing tollgate-wrt (0.6.0_alpha3-r1)
+OK: 39.1 MiB in 138 packages
+tollgate-wrt-0.6.0_alpha3-r1 x86_64 {tollgate-wrt} (GPL-3.0-only) [installed]
+--- world file ---
+tollgate-wrt
+
+### B. apk upgrade with an unpinned world
+exit=0
+tollgate-wrt-0.6.0_alpha3-r1 x86_64 {tollgate-wrt} (GPL-3.0-only) [installed]
+
+### C. downgrade = pin the known-good version
+exit=0
+(1/1) Downgrading tollgate-wrt (0.6.0_alpha3-r1 -> 0.6.0_alpha2-r1)
+tollgate-wrt-0.6.0_alpha2-r1 x86_64 {tollgate-wrt} (GPL-3.0-only) [installed]
+--- world file after the pin ---
+tollgate-wrt=0.6.0_alpha2-r1
+
+### D. does apk upgrade move it back to the newer version while the pin is in world?
+exit=0
+tollgate-wrt-0.6.0_alpha2-r1 x86_64 {tollgate-wrt} (GPL-3.0-only) [installed]
+
+### E. drop the pin, then upgrade again
+add exit=0
+--- world file after dropping the pin ---
+tollgate-wrt
+upgrade exit=0
+(1/1) Upgrading tollgate-wrt (0.6.0_alpha2-r1 -> 0.6.0_alpha3-r1)
+tollgate-wrt-0.6.0_alpha3-r1 x86_64 {tollgate-wrt} (GPL-3.0-only) [installed]
+
+### F. CLI against the running service (no procd in the container)
+srw-rw----    1 root     root             0 Sep 12 21:33 /var/run/tollgate.sock
+--- tollgate version ---
+Error: failed to communicate with TollGate service: failed to connect to TollGate service: dial unix /var/run/tollgate.sock: connect: connection refused
+Make sure the TollGate service is running
+Usage:
+  tollgate version [flags]
+
+Flags:
+  -h, --help   help for version
+
+Global Flags:
+  -j, --json   Output results as JSON
+
+Error: failed to communicate with TollGate service: failed to connect to TollGate service: dial unix /var/run/tollgate.sock: connect: connection refused
+Make sure the TollGate service is running
+exit=1
+--- tollgate status ---
+Error: failed to communicate with TollGate service: failed to connect to TollGate service: dial unix /var/run/tollgate.sock: connect: connection refused
+Make sure the TollGate service is running
+Usage:
+  tollgate status [flags]
+
+Flags:
+  -h, --help   help for status
+
+Global Flags:
+  -j, --json   Output results as JSON
+
+Error: failed to communicate with TollGate service: failed to connect to TollGate service: dial unix /var/run/tollgate.sock: connect: connection refused
+Make sure the TollGate service is running
+exit=1
+--- tollgate version --json ---
+{
+  "success": false,
+  "error": "Failed to communicate with TollGate service: failed to connect to TollGate service: dial unix /var/run/tollgate.sock: connect: connection refused",
+  "timestamp": "2026-09-12T21:33:46.549037015Z"
+}
+exit=0
+--- tollgate-wrt --version ---
+time="2026-09-12T21:33:46Z" level=info msg="Wireless gateway manager module loaded" module=wireless_gateway_manager
+2026/09/12 21:33:46 Using config paths: config=/etc/tollgate/config.json, install=/etc/tollgate/install.json, identities=/etc/tollgate/identities.json
+[36mINFO[0m[2026-09-12T21:33:46Z] Global logger initialized                     [36mlog_level[0m=info
+[36mINFO[0m[2026-09-12T21:33:46Z] Configuration loaded                          [36mip_randomized[0m=false [36mmodule[0m=main
+2026/09/12 21:33:46 === Merchant Initializing ===
+2026/09/12 21:33:46 RunInitialProbe: probing 7 mint(s)
+2026/09/12 21:33:46 mint probe: url=https://mint.coinos.io/v1/info status=200 elapsed=407.536213ms ok=true
+2026/09/12 21:33:47 mint probe: url=https://mint.minibits.cash/Bitcoin/v1/info status=200 elapsed=202.63085ms ok=true
+2026/09/12 21:33:47 mint probe: url=https://mint.lnserver.com/v1/info status=200 elapsed=829.824828ms ok=true
+2026/09/12 21:33:48 mint probe: url=https://mint.macadamia.cash/v1/info status=200 elapsed=165.110585ms ok=true
+2026/09/12 21:33:49 mint probe: url=https://mint.westernbtc.com/v1/info status=200 elapsed=856.73814ms ok=true
+2026/09/12 21:33:49 mint probe: url=https://kashu.me/v1/info status=200 elapsed=168.845333ms ok=true
+2026/09/12 21:33:49 mint probe: url=https://mint.cubabitcoin.org/v1/info status=200 elapsed=508.867217ms ok=true
+2026/09/12 21:33:49 Setting up wallet...
+2026/09/12 21:33:49 TollWallet.New: Initializing wallet at path: /etc/tollgate
+2026/09/12 21:33:49 TollWallet.New: Accepted mints: [https://mint.coinos.io https://mint.minibits.cash/Bitcoin https://mint.lnserver.com https://mint.macadamia.cash https://mint.westernbtc.com https://kashu.me https://mint.cubabitcoin.org]
+2026/09/12 21:33:49 TollWallet.New: Loading wallet with config: {WalletPath:/etc/tollgate CurrentMintURL:https://mint.coinos.io}
+2026/09/12 21:33:54 TollWallet: registered mint https://mint.minibits.cash/Bitcoin
+2026/09/12 21:33:56 TollWallet: registered mint https://mint.lnserver.com
+2026/09/12 21:33:57 TollWallet: registered mint https://mint.macadamia.cash
+2026/09/12 21:33:58 TollWallet: registered mint https://mint.westernbtc.com
+2026/09/12 21:33:59 TollWallet: registered mint https://kashu.me
+2026/09/12 21:34:00 TollWallet: registered mint https://mint.cubabitcoin.org
+2026/09/12 21:34:00 Accepted Mints: [{https://mint.coinos.io 64 10 60 128 1 sat 0} {https://mint.minibits.cash/Bitcoin 64 10 60 128 1 sat 0} {https://mint.lnserver.com 64 10 60 128 1 sat 0} {https://mint.macadamia.cash 64 10 60 128 1 sat 0} {https://mint.westernbtc.com 64 10 60 128 1 sat 0} {https://kashu.me 64 10 60 128 1 sat 0} {https://mint.cubabitcoin.org 64 10 60 128 1 sat 0}]
+2026/09/12 21:34:00 Wallet Balance: 0
+2026/09/12 21:34:00 Advertisement: {"kind":10021,"id":"4120f0f61e997e466a48cba2da1b75faba32370d247d1c05b50fbbc4d4427087","pubkey":"ce173e1459c8d01ab517669bb2ac6eb379d4ab6879b3555d781763f6661c4862","created_at":0,"tags":[["metric","bytes"],["step_size","22020096"],["tips","1","2"],["price_per_step","cashu","1","sat","https://mint.coinos.io","0"],["price_per_step","cashu","1","sat","https://mint.minibits.cash/Bitcoin","0"],["price_per_step","cashu","1","sat","https://mint.lnserver.com","0"],["price_per_step","cashu","1","sat","https://mint.macadamia.cash","0"],["price_per_step","cashu","1","sat","https://mint.westernbtc.com","0"],["price_per_step","cashu","1","sat","https://kashu.me","0"],["price_per_step","cashu","1","sat","https://mint.cubabitcoin.org","0"]],"content":"","sig":"81ac5180bc80332e80ecb212ac05ca5e74be29bc0c4240667ef6a146245a6504db442b50c07d3550d4b88641f9f5a1956abaef9dcc938391b6b342c8157ef41e"}
+2026/09/12 21:34:00 === Merchant ready ===
+2026/09/12 21:34:00 Starting payout routine
+2026/09/12 21:34:00 Payout routine started
+2026/09/12 21:34:00 Starting data usage monitoring routine
+[36mINFO[0m[2026-09-12T21:34:00Z] Upstream WiFi manager initialized             [36mmodule[0m=main
+[36mINFO[0m[2026-09-12T21:34:00Z] UpstreamSessionManager initialized successfully  [36mmodule[0m=upstream_session_manager
+[36mINFO[0m[2026-09-12T21:34:00Z] UpstreamSessionManager set for UpstreamDetector  [36mmodule[0m=upstream_detector
+[36mINFO[0m[2026-09-12T21:34:00Z] UpstreamDetector module initialized with upstream session manager and monitoring network changes  [36mmodule[0m=main
+[36mINFO[0m[2026-09-12T21:34:00Z] Starting upstream manager                     [36mmodule[0m=wireless_gateway_manager
+[36mINFO[0m[2026-09-12T21:34:00Z] Starting UpstreamDetector network monitoring  [36mmodule[0m=upstream_detector
+[36mINFO[0m[2026-09-12T21:34:00Z] Starting event-driven network monitor         [36mmodule[0m=upstream_detector
+[36mINFO[0m[2026-09-12T21:34:00Z] UpstreamDetector started successfully         [36mmodule[0m=upstream_detector
+[36mINFO[0m[2026-09-12T21:34:00Z] Monitoring network interface link changes...  [36mmodule[0m=upstream_detector
+[36mINFO[0m[2026-09-12T21:34:00Z] Monitoring network interface address changes...  [36mmodule[0m=upstream_detector
+[36mINFO[0m[2026-09-12T21:34:00Z] Starting periodic gateway check (every 30s)   [36mmodule[0m=upstream_detector
+[36mINFO[0m[2026-09-12T21:34:00Z] UpstreamDetector event loop started           [36mmodule[0m=upstream_detector
+[36mINFO[0m[2026-09-12T21:34:00Z] Creating network.wwan interface (DHCP)        [36mmodule[0m=wireless_gateway_manager
+[36mINFO[0m[2026-09-12T21:34:00Z] CLI server started                            [36mmodule[0m=cli [36msocket_path[0m=/var/run/tollgate.sock
+[36mINFO[0m[2026-09-12T21:34:00Z] CLI server initialized and listening on Unix socket  [36mmodule[0m=main
+Starting Tollgate Core
+Listening on all interfaces on port :2121
+[36mINFO[0m[2026-09-12T21:34:00Z] Registering handlers...                       [36mmodule[0m=main
+[36mINFO[0m[2026-09-12T21:34:00Z] identity: /identity and /identity/reveal-seed routes registered  [36mmodule[0m=main
+[36mINFO[0m[2026-09-12T21:34:00Z] Starting HTTP server on all interfaces...     [36mmodule[0m=main
+[31mFATA[0m[2026-09-12T21:34:00Z] listen tcp :2121: bind: address already in use  [31mmodule[0m=main
+exit=1
+--- tollgate --version ---
+Error: unknown flag: --version
+Usage:
+  tollgate [command]
+
+Available Commands:
+  completion  Generate the autocompletion script for the specified shell
+  config      Configuration management
+  health      Check service health
+  help        Help about any command
+  logs        Show TollGate logs
+  network     Network operations
+  restart     Restart TollGate services
+  ssl         SSL/TLS certificate management
+  start       Start TollGate services
+  status      Show service status
+  stop        Stop TollGate services
+  upstream    Upstream WiFi management
+  version     Show version information
+  wallet      Wallet operations
+
+Flags:
+  -h, --help   help for tollgate
+  -j, --json   Output results as JSON
+
+Use "tollgate [command] --help" for more information about a command.
+
+Error: unknown flag: --version
+exit=1
+--- /etc/init.d/tollgate-wrt status (needs procd) ---
+Failed to connect to ubus
+Failed to parse JSON data: unexpected end of data
+inactive
+exit=3

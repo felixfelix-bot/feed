@@ -1,0 +1,94 @@
+== capture 2026-10-11T16:30:30Z host=CobradorWave ==
+image: owrt2512:local 12MB
+rehearsal server: serving /home/c03rad0r/rc-lab/serve on 127.0.0.1:8123
+index bytes: 388  sha256: 50d39d450b8ce75422be931965a7bda7ba956e6563d6dd6f6070b2268e3dcb66
+
+### 0. router identity
+DISTRIB_RELEASE='25.12.5'
+DISTRIB_ARCH='x86_64'
+DISTRIB_DESCRIPTION='OpenWrt 25.12.5 r33051-f5dae5ece4'
+apk-tools 3.0.5, compiled for x86_64.
+
+### 1. trust the feed signing key
+wget_exit=0
+-rw-r--r--    1 root     root           178 Jun 29 12:59 openwrt-25.12.pem
+-rw-r--r--    1 root     root           178 Oct 11 16:30 tollgate-testing.pem
+
+### 2. point apk at the feed (full URL of the index file)
+http://127.0.0.1:8123/testing/25.12/x86_64/packages.adb
+
+### 3. apk update
+ [https://downloads.openwrt.org/releases/25.12.5/targets/x86/64/packages/packages.adb]
+ [https://downloads.openwrt.org/releases/25.12.5/packages/x86_64/base/packages.adb]
+ [https://downloads.openwrt.org/releases/25.12.5/targets/x86/64/kmods/6.12.94-1-a7bc15f451f9652701ba04af9cfb0b95/packages.adb]
+ [https://downloads.openwrt.org/releases/25.12.5/packages/x86_64/luci/packages.adb]
+ [https://downloads.openwrt.org/releases/25.12.5/packages/x86_64/packages/packages.adb]
+ [https://downloads.openwrt.org/releases/25.12.5/packages/x86_64/routing/packages.adb]
+ [https://downloads.openwrt.org/releases/25.12.5/packages/x86_64/telephony/packages.adb]
+ [https://downloads.openwrt.org/releases/25.12.5/packages/x86_64/video/packages.adb]
+ [http://127.0.0.1:8123/testing/25.12/x86_64/packages.adb]
+OK: 11248 distinct packages available
+update_exit=0
+
+### 4. is the package offered by the feed?
+tollgate-wrt policy:
+  0.6.0_alpha2-r1:
+    http://127.0.0.1:8123/testing/25.12/x86_64/packages.adb
+tollgate-wrt-0.6.0_alpha2-r1 - TollGate - Cashu-powered WiFi Payment Gateway (LOCAL REHEARSAL BUILD)
+
+### 5. install
+(1/2) Installing jq (1.8.1-r2)
+  Executing jq-1.8.1-r2.post-install
+(2/2) Installing tollgate-wrt (0.6.0_alpha2-r1)
+OK: 39.1 MiB in 138 packages
+add_exit=0
+
+### 6. provenance + installed files
+tollgate-wrt-0.6.0_alpha2-r1 x86_64 {tollgate-wrt} (GPL-3.0-only) [installed]
+tollgate-wrt policy:
+  0.6.0_alpha2-r1:
+    lib/apk/db/installed
+    http://127.0.0.1:8123/testing/25.12/x86_64/packages.adb
+--- files ---
+tollgate-wrt-0.6.0_alpha2-r1 contains:
+etc/config/firewall-tollgate
+etc/hotplug.d/iface/95-tollgate-restart
+etc/init.d/tollgate-wrt
+etc/tollgate/tollgate-captive-portal-site/404.html
+etc/tollgate/tollgate-captive-portal-site/asset-manifest.json
+etc/tollgate/tollgate-captive-portal-site/balance.html
+etc/tollgate/tollgate-captive-portal-site/favicon.ico
+etc/tollgate/tollgate-captive-portal-site/manifest.json
+etc/tollgate/tollgate-captive-portal-site/splash.html
+etc/tollgate/tollgate-captive-portal-site/assets/TollGate_Logo-C-white-D93CsdZc.png
+etc/tollgate/tollgate-captive-portal-site/assets/balance-5KSP87Gz.css
+--- CLI present ---
+-rwxr-xr-x    1 nobody   nogroup   10253038 Sep 12 21:08 /usr/bin/tollgate
+-rwxr-xr-x    1 nobody   nogroup   17732119 Sep 12 21:08 /usr/bin/tollgate-wrt
+--- init script ---
+-rwxr-xr-x    1 nobody   nogroup       1380 Sep 12 21:08 /etc/init.d/tollgate-wrt
+
+### 7. NEGATIVE CONTROL: unsigned index is refused (never use --allow-untrusted)
+WARNING: updating and opening http://127.0.0.1:8123/testing-unsigned/25.12/x86_64/packages.adb: UNTRUSTED signature
+ [https://downloads.openwrt.org/releases/25.12.5/targets/x86/64/packages/packages.adb]
+ [https://downloads.openwrt.org/releases/25.12.5/packages/x86_64/base/packages.adb]
+ [https://downloads.openwrt.org/releases/25.12.5/targets/x86/64/kmods/6.12.94-1-a7bc15f451f9652701ba04af9cfb0b95/packages.adb]
+ [https://downloads.openwrt.org/releases/25.12.5/packages/x86_64/luci/packages.adb]
+ [https://downloads.openwrt.org/releases/25.12.5/packages/x86_64/packages/packages.adb]
+ [https://downloads.openwrt.org/releases/25.12.5/packages/x86_64/routing/packages.adb]
+ [https://downloads.openwrt.org/releases/25.12.5/packages/x86_64/telephony/packages.adb]
+ [https://downloads.openwrt.org/releases/25.12.5/packages/x86_64/video/packages.adb]
+ [http://127.0.0.1:8123/testing/25.12/x86_64/packages.adb]
+1 unavailable, 0 stale; 11248 distinct packages available
+unsigned_update_exit=1
+
+### 8. removal is clean
+(1/2) Purging tollgate-wrt (0.6.0_alpha2-r1)
+(2/2) Purging jq (1.8.1-r2)
+  Executing jq-1.8.1-r2.pre-deinstall
+OK: 11.4 MiB in 136 packages
+del_exit=0
+ls: /usr/bin/tollgate: No such file or directory
+ls: /usr/bin/tollgate-wrt: No such file or directory
+
+== container exit=1 ==
