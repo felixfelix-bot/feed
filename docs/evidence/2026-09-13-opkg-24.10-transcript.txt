@@ -1,0 +1,57 @@
+### 24.10 router: opkg-side check
+DISTRIB_RELEASE='24.10.8'
+DISTRIB_ARCH='x86_64'
+DISTRIB_DESCRIPTION='OpenWrt 24.10.8 r29233-443ec4032a'
+opkg version 38eccbb1fd694d4798ac1baf88f9ba83d1eac616 (2024-10-16)
+--- /etc/opkg.conf ---
+dest root /
+dest ram /tmp
+lists_dir ext /var/opkg-lists
+option overlay_root /overlay
+option check_signature
+--- does stock opkg accept --force-downgrade? ---
+opkg must have one sub-command argument
+usage: opkg [options...] sub-command [arguments...]
+where sub-command is one of:
+
+	--force-downgrade	Allow opkg to downgrade packages
+OPKG_HAS_FORCE_DOWNGRADE
+--- unsigned index (Packages + Packages.gz, no signature) with option check_signature set ---
+src/gz tollgate-testing http://127.0.0.1:8123/testing-opkg/24.10/x86_64
+Downloading http://127.0.0.1:8123/testing-opkg/24.10/x86_64/Packages.gz
+Updated list of available packages in /var/opkg-lists/tollgate-testing
+Downloading http://127.0.0.1:8123/testing-opkg/24.10/x86_64/Packages.sig
+Signature file download failed.
+Remove wrong Signature file.
+Downloading https://downloads.openwrt.org/releases/24.10.8/targets/x86/64/packages/Packages.gz
+Updated list of available packages in /var/opkg-lists/openwrt_core
+Downloading https://downloads.openwrt.org/releases/24.10.8/targets/x86/64/packages/Packages.sig
+Signature check passed.
+Downloading https://downloads.openwrt.org/releases/24.10.8/packages/x86_64/base/Packages.gz
+Updated list of available packages in /var/opkg-lists/openwrt_base
+Downloading https://downloads.openwrt.org/releases/24.10.8/packages/x86_64/base/Packages.sig
+Signature check passed.
+Downloading https://downloads.openwrt.org/releases/24.10.8/targets/x86/64/kmods/6.6.144-1-50daf8372d971124fb3519e8d87e02ae/Packages.gz
+Updated list of available packages in /var/opkg-lists/openwrt_kmods
+Downloading https://downloads.openwrt.org/releases/24.10.8/targets/x86/64/kmods/6.6.144-1-50daf8372d971124fb3519e8d87e02ae/Packages.sig
+Signature check passed.
+Downloading https://downloads.openwrt.org/releases/24.10.8/packages/x86_64/luci/Packages.gz
+Updated list of available packages in /var/opkg-lists/openwrt_luci
+Downloading https://downloads.openwrt.org/releases/24.10.8/packages/x86_64/luci/Packages.sig
+Signature check passed.
+Downloading https://downloads.openwrt.org/releases/24.10.8/packages/x86_64/packages/Packages.gz
+Updated list of available packages in /var/opkg-lists/openwrt_packages
+Downloading https://downloads.openwrt.org/releases/24.10.8/packages/x86_64/packages/Packages.sig
+Signature check passed.
+Downloading https://downloads.openwrt.org/releases/24.10.8/packages/x86_64/routing/Packages.gz
+Updated list of available packages in /var/opkg-lists/openwrt_routing
+Downloading https://downloads.openwrt.org/releases/24.10.8/packages/x86_64/routing/Packages.sig
+Signature check passed.
+Downloading https://downloads.openwrt.org/releases/24.10.8/packages/x86_64/telephony/Packages.gz
+Updated list of available packages in /var/opkg-lists/openwrt_telephonyCollected errors:
+ * opkg_download: Failed to download http://127.0.0.1:8123/testing-opkg/24.10/x86_64/Packages.sig, wget returned 8.
+
+Downloading https://downloads.openwrt.org/releases/24.10.8/packages/x86_64/telephony/Packages.sig
+Signature check passed.
+opkg update exit=1
+opkg list exit=0
