@@ -53,6 +53,8 @@ normaliser):
 
 ```sh
 cd ~/repos/feed
+# SDK_IMAGE: append @sha256:<digest> from .github/workflows/validate-feed.yml
+# (matrix.include[target=mediatek-filogic].digest) for a byte-exact rerun.
 SDK_IMAGE=openwrt/sdk:mediatek-filogic-v25.12.5 \
 REPO_DIR=~/worktrees/fd3-upstream-build/repo \
 BIN_DIR=~/worktrees/fd3-upstream-build/build \
@@ -101,9 +103,19 @@ apk add --allow-untrusted ./tollgate-wrt_main.98.040dd7fa_aarch64_cortex-a53.apk
    therefore attests provenance from the **service** binary (which does carry
    `main.98.040dd7fa`) and emits an explicit `WARN` for the CLI. Fix belongs in
    the cross-compile step, not here.
-2. **SDK image.** The artifact was built with `openwrt/sdk:mediatek-filogic-v25.12.5`,
-   matching this repo's CI pin (`ci(feed): pin release SDK images to v25.12.5`,
-   ebbb18836). Upstream `packaging/build-inputs.json` pins `openwrt_sdk.release
+2. **SDK image.** The artifact was built with `openwrt/sdk:mediatek-filogic-v25.12.5`.
+   CI pins that image *by digest*, not by tag
+   (`ci(validate-feed): pin SDK images by digest and drive golang from the matrix`,
+   which hardened the earlier tag-only pin in `ebbb18836`,
+   `ci(feed): pin release SDK images to v25.12.5`):
+   `openwrt/sdk:mediatek-filogic-v25.12.5@sha256:011c367ac3e63ab3fd345bdb242564fedda033b40e73f883bd550fcf0d27bf9c`.
+   Because the digest is what Docker resolves, this README's bare `SDK_IMAGE=` tag
+   reproduces the same image only while the tag still points at that digest — for
+   a byte-exact rerun, append `@sha256:011c367a…` from the workflow matrix.
+   The image's own `feeds.conf.default` pins `openwrt.git^f0a60eee2f`, whose
+   message is "OpenWrt v25.12.5", and the branch is openwrt-25.12; that branch's
+   `GO_DEFAULT_VERSION:=1.26` is why CI installs `golang1.26`.
+   Upstream `packaging/build-inputs.json` pins `openwrt_sdk.release
    = 25.12.0` by digest for `mediatek-filogic`; the arch string and ABI are the
    same, but a build from that exact digest has not been run here.
 3. **Toolchain drift.** The prebuilt binaries report `go1.26.0`, while
