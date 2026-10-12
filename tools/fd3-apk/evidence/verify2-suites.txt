@@ -1,0 +1,4 @@
+=== suites after the readability fix ===
+test-package-prebuilt-apk.sh     19 passed, 0 failed
+test-sdk-volume-leak-guard.sh    22 passed, 0 failed
+test-verify-apk.sh               6 passed, 0 failed

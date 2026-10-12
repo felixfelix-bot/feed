@@ -1,0 +1,16 @@
+
+=== after ===  2026-09-20T22:18:36+02:00
+dangling count after: 0
+omniroute Up 4 days (healthy)
+mt00-postgres Up 4 days (healthy)
+mt00-redis Up 4 days (healthy)
+buildx_buildkit_local0 Up 4 days
+--- volume rows in system df ---
+=== artifact ===
+total 7272
+drwxrwxr-x 2 c03rad0r c03rad0r    4096 Sep 20 22:18 .
+drwxrwxr-x 5 c03rad0r c03rad0r    4096 Sep 20 22:09 ..
+-rw-r--r-- 1 c03rad0r c03rad0r 7438119 Sep 20 22:18 tollgate-wrt_main.98.040dd7fa_aarch64_cortex-a53.apk
+504e594929604f6073a26af5da5f45ee072c6e19f8d975b42a529f4ff01eeb80  /home/c03rad0r/worktrees/t_6cc04613/evidence/scratch-run2-dist/tollgate-wrt_main.98.040dd7fa_aarch64_cortex-a53.apk
+=== expected artifact sha from the original run (dist/) ===
+fb893695e80371b6b4b981b6da6cc8665b2dac0149e6bc1500f02951e2fcd899  /home/c03rad0r/worktrees/fd3-upstream-build/dist/tollgate-wrt_main.98.040dd7fa_aarch64_cortex-a53.apk

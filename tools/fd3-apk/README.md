@@ -18,6 +18,10 @@ packages them."
 | `verify-apk.sh` | metadata + payload + arch + provenance verification of a produced `.apk` |
 | `test-verify-apk.sh` | regression test for `verify-apk.sh` (accepts a good artifact, rejects a truncated one, never passes CLI provenance silently) |
 | `test-package-prebuilt-apk.sh` | regression test for `package-prebuilt-apk.sh` — runs with a stub `docker`, so no SDK: guards (missing version, sha mismatch, wrong REPO_DIR) plus the staged feed must carry the verified bytes byte-for-byte and the artifact must come out under `<name>_<version>_<arch>.apk` |
+| `lib-sdk-container.sh` | the docker lifecycle every SDK run must use: `--rm` + a `trap` that reaps the container **with volumes**, the label-scoped reaper for SIGKILLed runs, and the post-run "did this run leak a volume?" assertion |
+| `check-dangling-sdk-volumes.sh` | generic post-build guard: exit 1 (or `--warn-only`) if any dangling docker volume exists; `--reap` also clears stale labelled build containers |
+| `test-sdk-volume-leak-guard.sh` | regression test for the VOLUME leak (stub `docker`, no SDK): `--rm` present, `rm -f -v` everywhere, pre-run reaper, SIGTERM mid-build cleans up immediately, and a leaked volume makes the run **fail loudly** |
+| `test-sdk-volume-lifecycle-docker.sh` | opt-in (`FD3_DOCKER_IT=1`) real-docker lifecycle test on the actual `openwrt/sdk` image: reproduces the old `docker rm -f` leak, proves `--rm` reclaims it, proves the reaper closes the SIGKILL hole |
 | `evidence/fd3-aarch64-apk-verification.txt` | verbatim transcript of the verification for the artifact below |
 
 ## The artifact (FD3, 2026-09-20)
@@ -70,7 +74,13 @@ Verify + test:
 bash tools/fd3-apk/verify-apk.sh <artifact.apk>        # metadata/payload/arch/provenance
 bash tools/fd3-apk/test-verify-apk.sh                  # 6 assertions
 bash tools/fd3-apk/test-package-prebuilt-apk.sh        # 18 assertions, stub docker (no SDK)
+bash tools/fd3-apk/test-sdk-volume-leak-guard.sh       # 22 assertions, stub docker (no SDK)
+FD3_DOCKER_IT=1 bash tools/fd3-apk/test-sdk-volume-lifecycle-docker.sh   # real docker + real SDK image
+bash tools/fd3-apk/check-dangling-sdk-volumes.sh       # post-build guard: no orphaned volumes
 ```
+
+`BIN_CLI` may carry path components (`../bin/arm64/tollgate`) — it is staged under
+its **basename**, which is what `packaging/Makefile` reads.
 
 Inside the SDK container the packaging step is exactly:
 
@@ -91,6 +101,40 @@ Install on the router (untrusted local file):
 apk add --allow-untrusted ./tollgate-wrt_main.98.040dd7fa_aarch64_cortex-a53.apk
 # or, signature-free local feed: apk --allow-untrusted add --repository <dir> tollgate-wrt
 ```
+
+## The `openwrt/sdk` anonymous-VOLUME trap (fixed here 2026-09-20)
+
+`openwrt/sdk:<target>-<release>` declares `/builder` as a docker **VOLUME**. Every
+`docker run` of that image therefore allocates a fresh anonymous volume (~1.5 GB
+once populated), and `docker rm -f <container>` does **not** reclaim it — only
+`--rm` at run time, or `docker rm -v`, does.
+
+This helper originally did `docker run -d --name "$CONTAINER" … sleep infinity` and
+`docker rm -f "$CONTAINER"`. The run that produced the artifact above used that
+version, was killed at the harness timeout, and every retry repeated it: **six
+anonymous volumes = 8.895 GB**, found three hours later by the disk pass of
+2026-09-20 (it was 60 % of that box's +14.7 GB regrowth). It is invisible to the
+usual triage — `docker ps -a` is clean and the volumes are young, so no age sweep
+flags them. Check with `docker volume ls -f dangling=true -q` and
+`docker system df -v` (`LINKS=0`).
+
+What the helper does now:
+
+1. `docker run -d --rm --name "$CONTAINER" --label hermes.sdk-build=1 …` — `--rm`
+   is what reclaims the volume when the container exits.
+2. the long build step runs as a background job that the script `wait`s on, under
+   `trap … EXIT INT TERM HUP`, so a SIGTERM/SIGINT/SIGHUP is handled *immediately*
+   instead of after the build step finishes (that deferral is exactly how the
+   8.895 GB happened) and the container is removed with `docker rm -f -v`.
+3. a pre-run reaper removes a same-named container left by a SIGKILLed run.
+4. after the run the helper asserts it added **no** new dangling volume and exits
+   non-zero (naming the volume, the size, and the `docker volume rm` fix) if it
+   did — a leak can no longer be reported as a success.
+5. `check-dangling-sdk-volumes.sh` is the generic, repo-independent guard: run it
+   after any SDK build, and `--reap` to clear stale labelled build containers.
+
+Evidence: `evidence/` (stub-docker RED before the fix / GREEN after, the
+real-docker lifecycle transcript, and the post-fix re-run of this very build).
 
 ## Known gaps (recorded, not hidden)
 

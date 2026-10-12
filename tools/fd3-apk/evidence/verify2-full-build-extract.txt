@@ -1,0 +1,33 @@
+=== package-prebuilt-apk.sh full build re-run (fixed helper, real SDK image) ===
+--- [in] line ---
+[in] repo=/home/c03rad0r/worktrees/fd3-pkg sha=040dd7fa
+[in] service binary sha256=bb213a75dec470c46a38b448fc49fcb16b5585538b6e3ea39bfc1b35c5d5c029 (tollgate-wrt-linux-arm64)
+[in] version=main.98.040dd7fa arch=aarch64_cortex-a53 sdk=openwrt/sdk:mediatek-filogic-v25.12.5
+--- tail (result) ---
+tmp/.config-package.in:825:warning: ignoring type redefinition of 'PACKAGE_luci-proto-ipv6' from 'bool' to 'tristate'
+tmp/.config-package.in:834:warning: ignoring type redefinition of 'PACKAGE_luci-proto-ppp' from 'bool' to 'tristate'
+tmp/.config-package.in:844:warning: ignoring type redefinition of 'PACKAGE_luci-lib-uqr' from 'bool' to 'tristate'
+tmp/.config-package.in:1938:warning: ignoring type redefinition of 'PACKAGE_cgi-io' from 'bool' to 'tristate'
+tmp/.config-package.in:2044:warning: ignoring type redefinition of 'PACKAGE_ucode-mod-html' from 'bool' to 'tristate'
+Config-build.in:2691:warning: defaults for choice values not supported
+Config-build.in:2695:warning: defaults for choice values not supported
+Config-build.in:2699:warning: defaults for choice values not supported
+WARNING: can't open config file: /builder/shared-workdir/build/staging_dir/host/etc/ssl/openssl.cnf
+WARNING: can't open config file: /builder/shared-workdir/build/staging_dir/host/etc/ssl/openssl.cnf
+read EC key
+writing EC key
+Makefile:798: WARNING: skipping libgomp -- package has no install section
+patchelf: cannot find section '.dynamic'. The input file is most likely statically linked
+patchelf: cannot find section '.dynamic'. The input file is most likely statically linked
+touch -r /builder/build_dir/target-aarch64_cortex-a53_musl/tollgate-wrt-0.0.0_git98-r0/.built /builder/build_dir/target-aarch64_cortex-a53_musl/tollgate-wrt-0.0.0_git98-r0/.autoremove 2>/dev/null >/dev/null
+find /builder/build_dir/target-aarch64_cortex-a53_musl/tollgate-wrt-0.0.0_git98-r0 -mindepth 1 -maxdepth 1 -not '(' -type f -and -name '.*' -and -size 0 ')' -and -not -name '.pkgdir' -and -not -name 'version.date'  -print0 | xargs -r -0 rm -rf
+make[2]: Leaving directory '/workspace/net/tollgate-wrt'
+time: package/feeds/tollgate/tollgate-wrt/compile#5.79#1.39#10.71
+make[1]: Leaving directory '/builder'
+bin/packages/aarch64_cortex-a53/tollgate/tollgate-wrt-0.0.0_git98-r0.apk
+[out] /home/c03rad0r/worktrees/t_6cc04613/evidence/scratch-run2-dist/tollgate-wrt_main.98.040dd7fa_aarch64_cortex-a53.apk
+-rw-r--r-- 1 c03rad0r c03rad0r 7438119 Sep 20 22:18 /home/c03rad0r/worktrees/t_6cc04613/evidence/scratch-run2-dist/tollgate-wrt_main.98.040dd7fa_aarch64_cortex-a53.apk
+504e594929604f6073a26af5da5f45ee072c6e19f8d975b42a529f4ff01eeb80  /home/c03rad0r/worktrees/t_6cc04613/evidence/scratch-run2-dist/tollgate-wrt_main.98.040dd7fa_aarch64_cortex-a53.apk
+BUILD_EXIT=0
+--- volume/cleanup/permission lines ---
+(full 152 KB log kept next to the feed worktree at evidence/verify2-full-build.log)
