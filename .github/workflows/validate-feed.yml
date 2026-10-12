@@ -131,24 +131,59 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Pinned 2026-10-12 to the newest openwrt/sdk RELEASE tags (verified
+        # live on Docker Hub: v25.12.5 is the newest release for all three
+        # targets; no v25.12.6+ exists yet). Each entry carries the manifest
+        # digest so the pin is immutable — a bare moving/major tag (and
+        # absolutely not the old :*-master images, which were rebuilt
+        # 2026-08-14 with glibc >= 2.42 / iconv removal and broke
+        # gettext-full) can silently change under us. Snapshot tarballs also
+        # hit mirror sha256 skew; release images are pre-extracted and frozen
+        # at the 25.12.x toolchain (glibc < 2.42), fixing both failure modes.
+        #
+        # All three release images are built from OpenWrt branch 25.12 —
+        # verified from the image itself: /builder/feeds.conf.default pins
+        # openwrt.git^f0a60eee2fe051741c643ea6118718aae1ef17fb, whose message
+        # is literally "OpenWrt v25.12.5" and which is an ancestor of
+        # openwrt-25.12 (compare ahead_by=252 behind_by=0). That branch ships
+        # GO_DEFAULT_VERSION:=1.26, so the golang package matrix variable
+        # below is 1.26 for every target. This is matrix-driven rather than
+        # hardcoded so a future target pinned to a different branch (e.g.
+        # 24.10, which ships an unversioned `golang`) declares its own value
+        # instead of silently inheriting 25.12's.
+        #
+        # Digests cross-checked two ways (docker manifest inspect --verbose
+        # and the registry docker-content-digest header) and both agree.
         include:
-          - { target: x86-64,          desc: "host-runnable (amd64)" }
-          - { target: mediatek-filogic, desc: "GL-MT6000 (aarch64)" }
-          - { target: ramips-mt7621,    desc: "GL-MT3000 (mipsle)" }
+          - target: x86-64
+            desc: "host-runnable (amd64)"
+            golang: golang1.26
+            digest: sha256:e916b7cc555890bdc4725c926e139b888294f0c8f56561b88d8da3a6348616a2
+          - target: mediatek-filogic
+            desc: "GL-MT6000 (aarch64)"
+            golang: golang1.26
+            digest: sha256:011c367ac3e63ab3fd345bdb242564fedda033b40e73f883bd550fcf0d27bf9c
+          - target: ramips-mt7621
+            desc: "GL-MT3000 (mipsle)"
+            golang: golang1.26
+            digest: sha256:45a090c9883f42b649be77a1610a5bae4aae6c914e7ea4a5396be47707b74701
     container:
-      image: openwrt/sdk:${{ matrix.target }}-v25.12.5
+      # <tag>@sha256:<digest>: the digest, not the tag, is what Docker
+      # resolves, so this reference cannot move. Keep the human-readable
+      # target+version in the tag for debuggability.
+      image: openwrt/sdk:${{ matrix.target }}-v25.12.5@${{ matrix.digest }}
       options: --user root
     steps:
       - uses: actions/checkout@v4
 
       - name: Extract the OpenWrt SDK
-        # PINNED release images (openwrt/sdk:*-v25.12.5) are pre-extracted
-        # (./scripts present) so setup.sh is skipped. We pin release tags —
-        # NOT the moving :*-master images (rebuilt ~2026-08-14 with glibc
-        # >=2.42 / iconv removal, breaking gettext-full; and snapshot SDK
-        # tarballs hit mirror sha256 skew). Release images are frozen at the
-        # 25.12.x toolchain (glibc < 2.42) and pre-extracted, fixing both.
-        # See openwrt/docker README.
+        # PINNED release images (openwrt/sdk:*-v25.12.5, resolved by digest)
+        # are pre-extracted (./scripts present) so setup.sh is skipped. We pin
+        # release tags — NOT the moving :*-master images (rebuilt ~2026-08-14
+        # with glibc >=2.42 / iconv removal, breaking gettext-full; and
+        # snapshot SDK tarballs hit mirror sha256 skew). Release images are
+        # frozen at the 25.12.x toolchain (glibc < 2.42) and pre-extracted,
+        # fixing both. See openwrt/docker README.
         shell: bash
         run: cd /builder && { [ -d ./scripts ] || ./setup.sh; }
 
@@ -179,10 +214,14 @@ jobs:
           ./scripts/feeds update -a
           # Targeted install (not -a): -a pulls every feed package and exposes
           # current openwrt-master recursive-dependency breakage (luci,
-          # strongswan, ...). golang1.26 is required because the `golang`
-          # package is a dummy whose HOST_BUILD_DEPENDS is golang1.26/host
-          # (the real toolchain). Bump 1.26 if GO_DEFAULT_VERSION changes.
-          ./scripts/feeds install tollgate-wrt golang golang1.26 nodogsplash jq
+          # strongswan, ...). The versioned golang package (${{ matrix.golang }})
+          # must match the SDK image's OpenWrt branch: `golang` is a dummy whose
+          # HOST_BUILD_DEPENDS is golang<X>/host (the real toolchain). Pinned
+          # per-target in the matrix above because the version differs by branch
+          # (25.12 -> golang1.26 via GO_DEFAULT_VERSION; 24.10 ships no
+          # golang1.x package at all). Changing the SDK image pin therefore
+          # requires updating matrix.golang in the same commit.
+          ./scripts/feeds install tollgate-wrt golang ${{ matrix.golang }} nodogsplash jq
 
       - name: Configure
         shell: bash
