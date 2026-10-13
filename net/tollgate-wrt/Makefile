@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-2.0-only
+# SPDX-License-Identifier: GPL-3.0-only
 #
 # tollgate-wrt — Cashu-powered WiFi payment gateway for OpenWrt.
 #
@@ -6,6 +6,19 @@
 # golang-package.mk. The upstream repo (tollgate-module-basic-go) is NOT
 # modified — its Go source lives under src/ and uses a multi-module layout
 # (the main module at src/ plus sibling sub-modules wired via `replace`).
+#
+# The runtime files (init.d, uci-defaults, nftables.d, hotplug.d, man pages,
+# captive-portal site, usr/bin helpers, keep.d) are NOT vendored into this
+# feed. They are installed directly from the SOURCE TARBALL's packaging/files/
+# directory (see $(PKG_TARBALL_DIR) below), which ships OpenWrt-shaped files
+# because upstream releases its own .ipk from the same tree. Bumping
+# PKG_SOURCE_VERSION pulls in the matching runtime files automatically — there
+# is no separate files/ tree to keep in sync.
+#
+# Versioning: PKG_VERSION (apk-legal, underscore) names the package version
+# while PKG_SOURCE_VERSION (hyphen, upstream git tag) drives the download
+# URL/tarball name and the tag-named build dirs below — see the version block
+# for why the two are split.
 #
 # One package, two binaries:
 #   - tollgate-wrt : the service, the module-root main package at src/main.go
@@ -19,21 +32,40 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=tollgate-wrt
-PKG_VERSION:=0.5.0
+# PKG_VERSION is the apk-legal package version. Since OpenWrt SDKs moved to
+# apk (CONFIG_USE_APK, v24.10+), include/package-pack.mk feeds
+# "version:$(VERSION)" = "$(PKG_VERSION)-r$(PKG_RELEASE)" to `apk mkpkg`, and
+# apk-tools 3.x REJECTS hyphens ("package version is invalid", make Error 99).
+# apk pre-release convention uses '_' (or '~'): 0.6.0_alpha1-r1 is accepted.
+PKG_VERSION:=0.6.0_alpha1
+# PKG_SOURCE_VERSION is the upstream git tag (hyphenated, immutable on GitHub).
+# It drives ONLY the download naming/URL and the tag-named build dirs below —
+# never the package version — so the two can differ legally.
+PKG_SOURCE_VERSION:=0.6.0-alpha1
 PKG_RELEASE:=1
 
-PKG_SOURCE:=tollgate-module-basic-go-$(PKG_VERSION).tar.gz
-PKG_SOURCE_URL:=https://codeload.github.com/OpenTollGate/tollgate-module-basic-go/tar.gz/v$(PKG_VERSION)?
-PKG_HASH:=a547c03cbdfe681e6315e1b6d0e00414daf845a05d20851b92ce55e749edd422
+PKG_SOURCE:=tollgate-module-basic-go-$(PKG_SOURCE_VERSION).tar.gz
+PKG_SOURCE_URL:=https://codeload.github.com/OpenTollGate/tollgate-module-basic-go/tar.gz/v$(PKG_SOURCE_VERSION)?
+PKG_HASH:=c0ca1b37cbccde8e46de8e42287185d322c648bb10ad317b3e496a136a0e35f7
 
-PKG_MAINTAINER:=TollGate <tollgate@tollgate.me>
+PKG_MAINTAINER:=Felix <felix@tollgate.me>
 PKG_LICENSE:=GPL-3.0-only
 PKG_LICENSE_FILES:=LICENSE
 
 # PKG_BUILD_DIR points at the tarball's src/ directory: that is where the main
 # module's go.mod lives, so golang-package.mk operates on the module root and
 # the `replace ./xxx` directives resolve to sibling directories in the tree.
-PKG_BUILD_DIR:=$(BUILD_DIR)/tollgate-module-basic-go-$(PKG_VERSION)/src
+# It stays tag-named (PKG_SOURCE_VERSION, hyphen) because the tarball extracts
+# to tollgate-module-basic-go-0.6.0-alpha1/ — it must NOT follow PKG_VERSION.
+PKG_BUILD_DIR:=$(BUILD_DIR)/tollgate-module-basic-go-$(PKG_SOURCE_VERSION)/src
+
+# PKG_TARBALL_DIR is the tarball extraction root (parent of PKG_BUILD_DIR).
+# Build/Prepare extracts the WHOLE upstream tarball there, so packaging/files/
+# — the OpenWrt-shaped runtime files — survives as a sibling of src/ and can
+# be referenced by the install recipe below. Nothing is vendored into this
+# feed; the files ride along with the upstream release tarball. Tag-named for
+# the same reason as PKG_BUILD_DIR (see above).
+PKG_TARBALL_DIR:=$(BUILD_DIR)/tollgate-module-basic-go-$(PKG_SOURCE_VERSION)
 
 PKG_BUILD_DEPENDS:=golang/host
 PKG_BUILD_PARALLEL:=1
@@ -45,10 +77,12 @@ GO_PKG:=github.com/OpenTollGate/tollgate-module-basic-go
 GO_PKG_BUILD_PKG:=$(GO_PKG)
 
 # Version injection. src/cli is its own sub-module, so the import path keeps
-# the /src segment (matches how upstream's CI injects these values).
+# the /src segment (matches how upstream's CI injects these values). Tied to
+# PKG_SOURCE_VERSION so the baked-in Version/GitCommit match the upstream tag
+# (v0.6.0-alpha1 / 0.6.0-alpha1) rather than the apk-legal package version.
 GO_PKG_LDFLAGS_X:= \
-	$(GO_PKG)/src/cli.Version=v$(PKG_VERSION) \
-	$(GO_PKG)/src/cli.GitCommit=$(PKG_VERSION) \
+	$(GO_PKG)/src/cli.Version=v$(PKG_SOURCE_VERSION) \
+	$(GO_PKG)/src/cli.GitCommit=$(PKG_SOURCE_VERSION) \
 	$(GO_PKG)/src/cli.BuildTime=$(SOURCE_DATE_EPOCH)
 
 # NOTE on the golang-package.mk include path:
@@ -77,8 +111,10 @@ define Package/tollgate-wrt/description
 endef
 
 define Package/tollgate-wrt/conffiles
-/etc/tollgate/
-/etc/config/firewall-tollgate
+/etc/tollgate/config.json
+/etc/tollgate/install.json
+/etc/tollgate/identities.json
+/etc/nftables.d/20-nds-enforce.nft
 endef
 
 # Deterministic extraction + layout diagnostic. Upstream's go.mod lives in a
@@ -101,14 +137,26 @@ define Build/Prepare
 endef
 
 # Build both binaries: the service via the framework helper, then the CLI from
-# its separate module directory. The framework helper handles the service; the
-# CLI lives in a sibling go module so we build it manually. Make runs each
-# recipe line in a SEPARATE shell, so the cross-compile environment set up by
-# GoPackage/Build/Compile does NOT carry over. We must re-establish it via
-# $(GO_PKG_VARS), which adds `go` to PATH and exports GOOS/GOARCH/GOARM/GOMIPS/
-# CGO_ENABLED/CC/GOCACHE/GOMODCACHE — exactly what the framework uses. The -X
-# ldflags are harmless no-ops for the CLI module (it does not contain those
-# symbols).
+# its separate module directory.
+#
+# WHY this override is REQUIRED (not stylistic): the CLI is its own Go module
+# (`module tollgate-cli`, go.mod at src/cmd/tollgate-cli/go.mod), SEPARATE from
+# the main module golang-package.mk operates on. GO_PKG_BUILD_PKG cannot cross
+# module boundaries — the framework's Build/Compile runs `go install` inside the
+# CURRENT module (src/), so it can only build packages in the main module
+# (github.com/OpenTollGate/tollgate-module-basic-go); pointing GO_PKG_BUILD_PKG
+# at the CLI's import path would fail. Hence the CLI must be built manually
+# from its own module dir, reusing the framework's exported cross-compile
+# environment. Upstream PR #125 tried to avoid this by restructuring the Go
+# source (src/ -> repo root) but was abandoned (~120 files, never rebased), so
+# this override is the supported way to ship both binaries from one package.
+#
+# Make runs each recipe line in a SEPARATE shell, so the cross-compile
+# environment set up by GoPackage/Build/Compile does NOT carry over to the
+# second recipe line. We must re-establish it via $(GO_PKG_VARS), which adds
+# `go` to PATH and exports GOOS/GOARCH/GOARM/GOMIPS/CGO_ENABLED/CC/GOCACHE/
+# GOMODCACHE — exactly what the framework uses. The -X ldflags are harmless
+# no-ops for the CLI module (it does not contain those symbols).
 define Build/Compile
 	$(call GoPackage/Build/Compile)
 	cd $(PKG_BUILD_DIR)/cmd/tollgate-cli && \
@@ -166,41 +214,49 @@ fi
 exit 0
 endef
 
+# Runtime files are installed from the upstream source tarball's
+# packaging/files/ directory (see PKG_TARBALL_DIR above), NOT from a vendored
+# copy checked into this feed. The binaries install lines use
+# $(GO_PKG_BUILD_BIN_DIR) and stay unchanged.
 define Package/tollgate-wrt/install
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) $(GO_PKG_BUILD_BIN_DIR)/tollgate-module-basic-go $(1)/usr/bin/tollgate-wrt
 	$(INSTALL_BIN) $(GO_PKG_BUILD_BIN_DIR)/tollgate-cli $(1)/usr/bin/tollgate
 
 	$(INSTALL_DIR) $(1)/etc/init.d
-	$(INSTALL_BIN) ./files/etc/init.d/tollgate-wrt $(1)/etc/init.d/
+	$(INSTALL_BIN) $(PKG_TARBALL_DIR)/packaging/files/etc/init.d/tollgate-wrt $(1)/etc/init.d/
 
 	$(INSTALL_DIR) $(1)/etc/uci-defaults
-	$(INSTALL_BIN) ./files/etc/uci-defaults/90-tollgate-captive-portal-symlink $(1)/etc/uci-defaults/
-	$(INSTALL_BIN) ./files/etc/uci-defaults/99-tollgate-setup $(1)/etc/uci-defaults/
+	$(INSTALL_BIN) $(PKG_TARBALL_DIR)/packaging/files/etc/uci-defaults/90-tollgate-captive-portal-symlink $(1)/etc/uci-defaults/
+	$(INSTALL_BIN) $(PKG_TARBALL_DIR)/packaging/files/etc/uci-defaults/99-tollgate-setup $(1)/etc/uci-defaults/
 
-	$(INSTALL_DIR) $(1)/etc/config
-	$(INSTALL_DATA) ./files/etc/config/firewall-tollgate $(1)/etc/config/
+	$(INSTALL_DIR) $(1)/etc/nftables.d
+	$(INSTALL_DATA) $(PKG_TARBALL_DIR)/packaging/files/etc/nftables.d/20-nds-enforce.nft $(1)/etc/nftables.d/
+	$(INSTALL_DATA) $(PKG_TARBALL_DIR)/packaging/files/etc/nftables.d/30-backend-firewall.nft $(1)/etc/nftables.d/
+
+	$(INSTALL_DIR) $(1)/usr/share/man/man8
+	$(INSTALL_DATA) $(PKG_TARBALL_DIR)/packaging/files/man/man8/*.8 $(1)/usr/share/man/man8/
 
 	$(INSTALL_DIR) $(1)/etc/hotplug.d/iface
-	$(INSTALL_BIN) ./files/etc/hotplug.d/iface/95-tollgate-restart $(1)/etc/hotplug.d/iface/
+	$(INSTALL_BIN) $(PKG_TARBALL_DIR)/packaging/files/etc/hotplug.d/iface/95-tollgate-restart $(1)/etc/hotplug.d/iface/
 
 	$(INSTALL_DIR) $(1)/usr/bin
-	$(INSTALL_BIN) ./files/usr/bin/check_package_path $(1)/usr/bin/
-	$(INSTALL_BIN) ./files/usr/bin/tollgate-apply-ssl $(1)/usr/bin/
-	$(INSTALL_BIN) ./files/usr/bin/tollgate-remove-ssl $(1)/usr/bin/
+	$(INSTALL_BIN) $(PKG_TARBALL_DIR)/packaging/files/usr/bin/check_package_path $(1)/usr/bin/
+	$(INSTALL_BIN) $(PKG_TARBALL_DIR)/packaging/files/usr/bin/tollgate-apply-ssl $(1)/usr/bin/
+	$(INSTALL_BIN) $(PKG_TARBALL_DIR)/packaging/files/usr/bin/tollgate-remove-ssl $(1)/usr/bin/
 
 	$(INSTALL_DIR) $(1)/usr/local/bin
-	$(INSTALL_BIN) ./files/usr/local/bin/first-login-setup $(1)/usr/local/bin/
+	$(INSTALL_BIN) $(PKG_TARBALL_DIR)/packaging/files/usr/local/bin/first-login-setup $(1)/usr/local/bin/
 
 	$(INSTALL_DIR) $(1)/etc/tollgate/ecash
 
 	$(INSTALL_DIR) $(1)/etc/tollgate/tollgate-captive-portal-site
-	$(CP) ./files/tollgate-captive-portal-site/. $(1)/etc/tollgate/tollgate-captive-portal-site/
+	$(CP) $(PKG_TARBALL_DIR)/packaging/files/tollgate-captive-portal-site/. $(1)/etc/tollgate/tollgate-captive-portal-site/
 
 	$(INSTALL_DIR) $(1)/etc/crontabs
 
 	$(INSTALL_DIR) $(1)/lib/upgrade/keep.d
-	$(INSTALL_DATA) ./files/lib/upgrade/keep.d/tollgate $(1)/lib/upgrade/keep.d/
+	$(INSTALL_DATA) $(PKG_TARBALL_DIR)/packaging/files/lib/upgrade/keep.d/tollgate $(1)/lib/upgrade/keep.d/
 endef
 
 $(eval $(call BuildPackage,tollgate-wrt))

@@ -37,11 +37,13 @@ By putting the feed glue in **this separate repo**:
   service, then (2) a manual `go build` of the CLI from its own module dir,
   reusing the framework's exported cross-compile/toolchain env.
 - **Source fetched, not vendored.** `PKG_SOURCE_URL` downloads the upstream
-  `v0.5.0` tarball; `PKG_HASH` pins it. `PKG_BUILD_DIR` points at the tarball's
-  `src/` so `golang-package.mk` operates on the module root.
-- **Runtime `files/` ARE vendored** here (init.d, uci-defaults, captive-portal
-  site, hotplug, keep.d) — copied from upstream `packaging/files/` via
-  `scripts/sync-from-upstream.sh` and re-synced per release.
+  tarball pinned by `PKG_SOURCE_VERSION` (the upstream git tag); `PKG_HASH`
+  pins it. `PKG_BUILD_DIR` points at the tarball's `src/` so
+  `golang-package.mk` operates on the module root.
+- **Runtime files are NOT vendored** (init.d, uci-defaults, captive-portal
+  site, hotplug, keep.d, man pages). They install from the tarball's
+  `packaging/files/` tree via `$(PKG_TARBALL_DIR)` — bumping the tag pulls in
+  the matching files automatically; there is no files/ tree to keep in sync.
 - **Upstream policy compliance** (enforced by CI): no `REPLACES`, no `luci`
   dependency, `GPL-3.0-only`, real `PKG_HASH`.
 
@@ -50,10 +52,11 @@ By putting the feed glue in **this separate repo**:
 ```
 feed/
 ├── net/tollgate-wrt/
-│   ├── Makefile          # single package; builds service + CLI
-│   └── files/            # vendored from upstream packaging/files/
+│   ├── Makefile          # single package; builds service + CLI; installs
+│   │                     # runtime files from the tarball's packaging/files/
+│   └── test.sh, test-version.sh   # buildbot runtime-test scripts
 ├── scripts/
-│   └── sync-from-upstream.sh   # re-vendor files/ + recompute PKG_HASH for a tag
+│   └── sync-from-upstream.sh   # re-pin PKG_VERSION/PKG_SOURCE_VERSION/PKG_HASH for a tag
 ├── .github/workflows/
 │   └── validate-feed.yml # lint + PKG_HASH verify + OpenWrt SDK build
 ├── README.md
@@ -74,16 +77,25 @@ This one-liner swap is the only feed-vs-upstream difference.
 
 ```makefile
 PKG_NAME:=tollgate-wrt
-PKG_VERSION:=0.5.0
+PKG_VERSION:=0.6.0_alpha1           # apk-legal package version (underscore)
+PKG_SOURCE_VERSION:=0.6.0-alpha1    # upstream git tag (hyphen): URL + dir names
 PKG_RELEASE:=1
-PKG_SOURCE:=tollgate-module-basic-go-$(PKG_VERSION).tar.gz
-PKG_SOURCE_URL:=https://codeload.github.com/OpenTollGate/tollgate-module-basic-go/tar.gz/v$(PKG_VERSION)?
+PKG_SOURCE:=tollgate-module-basic-go-$(PKG_SOURCE_VERSION).tar.gz
+PKG_SOURCE_URL:=https://codeload.github.com/OpenTollGate/tollgate-module-basic-go/tar.gz/v$(PKG_SOURCE_VERSION)?
 PKG_HASH:=<sha256>
-PKG_BUILD_DIR:=$(BUILD_DIR)/tollgate-module-basic-go-$(PKG_VERSION)/src
+PKG_BUILD_DIR:=$(BUILD_DIR)/tollgate-module-basic-go-$(PKG_SOURCE_VERSION)/src
+PKG_TARBALL_DIR:=$(BUILD_DIR)/tollgate-module-basic-go-$(PKG_SOURCE_VERSION)
 GO_PKG:=github.com/OpenTollGate/tollgate-module-basic-go
 GO_PKG_BUILD_PKG:=$(GO_PKG)
 DEPENDS:=+nodogsplash +jq $(GO_ARCH_DEPENDS)
 ```
+
+`PKG_VERSION` and `PKG_SOURCE_VERSION` are split because the upstream GitHub
+tag is hyphenated (`v0.6.0-alpha1`, immutable) while `apk mkpkg` rejects
+hyphens in a package version — it takes `0.6.0_alpha1` → VERSION
+`0.6.0_alpha1-r1`. Only `PKG_SOURCE_VERSION` feeds the download URL, the
+tag-named build/extract dirs and the LDFLAGS build info; `PKG_TARBALL_DIR` is
+the extraction root that the install recipe sources `packaging/files/` from.
 
 ## Highest-risk item (gated by CI)
 
@@ -98,9 +110,17 @@ that proves both compile before any upstream submission.
 
 | Job | Purpose | When it runs |
 |---|---|---|
-| `validate` | Makefile field lint (no `REPLACES`), `PKG_HASH` vs the live tarball, every referenced `files/` path exists | every push/PR |
-| `go-smoke` | plain `go build` of both Go modules for amd64/arm64/mipsle | every push/PR |
+| `validate` | Makefile field lint (no `REPLACES`), `PKG_HASH` vs the live tarball, every referenced `packaging/files/` path exists in the tarball | every push/PR |
+| `go-smoke` | plain `go build` of both Go modules for amd64/arm64/mipsle; module cache keyed on the tarball's `go.sum`, network steps retried | every push/PR |
 | `build-sdk` | authoritative OpenWrt SDK compile via `golang-package.mk` | main pushes, PRs, tags, weekly, manual dispatch |
+
+Both network-facing jobs are hardened against transient failures: tarball
+fetches are retried, and `go-smoke` restores its Go module cache from the
+*tarball's* `go.sum` files (the feed repo has no `go.sum` of its own), so
+steady-state runs download nothing. Without that cache every run cold-pulled
+every module from `proxy.golang.org`, which intermittently aborts a zip
+mid-stream (`stream error: ... INTERNAL_ERROR; received from peer`) — that is
+what red-lit the mipsle leg of run 34626562337.
 
 `build-sdk` builds a **3-target matrix** so the real TollGate hardware arches
 are proven, not just x86-64:
@@ -134,12 +154,18 @@ available.
 - [x] Wipe unneeded current repo contents
       (`FEED-MANIFEST.conf`, `docs/`, `scripts/generate-*-index.sh`, old workflow)
 - [x] Vendor `files/` from upstream `v0.5.0` and pin `PKG_HASH`
+- [x] Switch to tarball-install: install runtime files from the pinned
+      tarball's `packaging/files/` (`PKG_TARBALL_DIR`), delete the vendored
+      `files/` tree, rework the validate job's file checks to run against
+      the tarball
 - [x] Write `net/tollgate-wrt/Makefile` (single package, both binaries)
 - [x] Write `scripts/sync-from-upstream.sh` (idempotent, `shellcheck` clean)
 - [x] Write `.github/workflows/validate-feed.yml` (validate + go-smoke + build-sdk)
 - [x] Enhance `build-sdk`: run on main pushes, 3-arch matrix (x86-64 +
       mediatek-filogic + ramips-mt7621), upload package artifacts
       (smoke test intentionally omitted to keep it simple)
+- [x] Harden CI against transient network failures: retried tarball fetches,
+      `go-smoke` module cache keyed on the tarball's `go.sum`, pinned Go 1.25
 - [x] Rewrite `README.md` and `AGENTS.md`
 - [x] Verify: Makefile lint, hash check, referenced-paths check, `shellcheck`
 - [ ] _(future)_ First green `build-sdk` run across all 3 arches

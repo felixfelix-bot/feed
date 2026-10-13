@@ -13,11 +13,15 @@ merged into [`openwrt/packages`](https://github.com/openwrt/packages).
 
 ```
 net/tollgate-wrt/Makefile   # the package recipe (single package, two binaries)
-net/tollgate-wrt/files/     # vendored runtime files (init.d, uci-defaults, captive-portal site, …)
 scripts/sync-from-upstream.sh
 .github/workflows/validate-feed.yml
 PLAN.md                     # design + checklist (keep the checklist current)
 ```
+
+The runtime files (init.d, uci-defaults, nftables.d, hotplug.d, man pages,
+captive-portal site, usr/bin helpers, keep.d) are NOT in this repo — the
+Makefile installs them from the pinned source tarball's `packaging/files/`
+(`$(PKG_TARBALL_DIR)` in the Makefile).
 
 ## Golden rules
 
@@ -33,21 +37,23 @@ PLAN.md                     # design + checklist (keep the checklist current)
    main module at `src/`; the CLI is a self-contained module at
    `src/cmd/tollgate-cli/`. The `Build/Compile` override handles both. See the
    comments in the Makefile.
-5. **`files/` are vendored**, not generated here. Update them only via
-   `scripts/sync-from-upstream.sh <tag>`.
+5. **Runtime files are not vendored.** They install from the pinned source
+   tarball's `packaging/files/` via `$(PKG_TARBALL_DIR)` in the Makefile.
+   Never copy runtime files into `net/tollgate-wrt/` — bump the tag instead
+   (`scripts/sync-from-upstream.sh <tag>`).
 
 ## Releasing a new version
 
 ```sh
-scripts/sync-from-upstream.sh v0.5.1   # updates PKG_VERSION, PKG_HASH, files/
+scripts/sync-from-upstream.sh v0.6.0-alpha1   # updates PKG_VERSION, PKG_SOURCE_VERSION, PKG_HASH
 ```
 
 Then verify the CI `go-smoke` + `build-sdk` jobs pass before merging.
 
 ## Verification
 
-- Lint + hash + files check + Go smoke: the `validate` and `go-smoke` jobs run
-  on every push/PR. They are fast and deterministic.
+- Lint + hash + tarball file checks + Go smoke: the `validate` and `go-smoke`
+  jobs run on every push/PR. They are fast and deterministic.
 - The `build-sdk` job (OpenWrt SDK compile) is the authoritative gate. It runs
   on PRs, tags, weekly, and manually.
 
