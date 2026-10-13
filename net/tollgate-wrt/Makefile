@@ -26,7 +26,7 @@ PKG_SOURCE:=tollgate-module-basic-go-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://codeload.github.com/OpenTollGate/tollgate-module-basic-go/tar.gz/v$(PKG_VERSION)?
 PKG_HASH:=a547c03cbdfe681e6315e1b6d0e00414daf845a05d20851b92ce55e749edd422
 
-PKG_MAINTAINER:=TollGate <tollgate@tollgate.me>
+PKG_MAINTAINER:=
 PKG_LICENSE:=GPL-3.0-only
 PKG_LICENSE_FILES:=LICENSE
 
