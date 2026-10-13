@@ -2,15 +2,21 @@
 
 An OpenWrt package feed that builds **`tollgate-wrt`** from the upstream
 [`OpenTollGate/tollgate-module-basic-go`](https://github.com/OpenTollGate/tollgate-module-basic-go)
-source using OpenWrt's `golang-package.mk`.
+source using OpenWrt's `golang-package.mk`, and also ships **`mptcp-bonding`**,
+a pure-files MPTCP multi-WAN bonding client.
+
+| Package | Language | What it does |
+|---|---|---|
+| `tollgate-wrt` | Go | Cashu-powered WiFi payment gateway (service + `tollgate` CLI) |
+| `mptcp-bonding` | shell | MPTCP multi-WAN bonding client (pure files, no compile) |
 
 TollGate turns an OpenWrt router into a Cashu-powered payment gateway for
-internet access. This feed produces a single package that installs both
-binaries — the `tollgate-wrt` service and the `tollgate` CLI — plus its init
-scripts, UCI defaults, captive-portal site, and hotplug hooks.
+internet access. The `tollgate-wrt` package installs both binaries — the
+`tollgate-wrt` service and the `tollgate` CLI — plus its init scripts, UCI
+defaults, captive-portal site, and hotplug hooks.
 
-The upstream repository is **not modified** by this feed. It is downloaded,
-built, and packaged entirely from the release source tarball.
+The upstream repositories are **not modified** by this feed. They are
+downloaded, built, and packaged entirely from release source tarballs.
 
 ## Why a separate feed repo
 
@@ -43,6 +49,18 @@ tollgate-wrt**, and build.
 > The package depends on `nodogsplash` and `jq`, which come from the standard
 > `packages` feed — keep that feed enabled too. `golang-package.mk` (the Go
 > build helpers) also comes from the `packages` feed.
+
+`mptcp-bonding` is a pure-files package (no compile): it ships a procd init
+script, a UCI schema, an MPTCP kernel sysctl config, and a `setup-bond.sh`
+helper. Install it with:
+
+```sh
+./scripts/feeds install mptcp-bonding
+```
+
+It depends on `shadowsocks-libev-ss-redir`, `ip-full`, and `kmod-sched`.
+Configure the convergence-point server endpoint in `/etc/config/mptcp-bonding`
+before enabling the service.
 
 ## How it builds two binaries in one package
 

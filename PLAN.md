@@ -3,12 +3,22 @@
 ## Goal
 
 Turn this repo into a clean OpenWrt **`src-git` feed** that builds the
-`tollgate-wrt` package from upstream source via `golang-package.mk`, so that:
+`tollgate-wrt` package from upstream source via `golang-package.mk`, and ships
+the pure-files `mptcp-bonding` client, so that:
 
 1. It is usable **today** by firmware builders (`feeds.conf` → this repo).
 2. It lifts cleanly into a future PR against [`openwrt/packages`](https://github.com/openwrt/packages),
    achieving the upstream merge that PR [#125](https://github.com/OpenTollGate/tollgate-module-basic-go/pull/125)
    was pursuing.
+
+## Packages
+
+This feed currently carries two independent packages in `net/<name>/`:
+
+| Package | Language | Build system | Status |
+|---|---|---|---|
+| `tollgate-wrt` | Go | `golang-package.mk` | ready |
+| `mptcp-bonding` | shell | `package.mk` (pure files, no compile) | ready |
 
 ## Why this approach (lessons from PR #125)
 
@@ -52,6 +62,9 @@ feed/
 ├── net/tollgate-wrt/
 │   ├── Makefile          # single package; builds service + CLI
 │   └── files/            # vendored from upstream packaging/files/
+├── net/mptcp-bonding/
+│   ├── Makefile          # pure-files package (no compile)
+│   └── files/            # init.d, UCI config, sysctl, setup-bond helper
 ├── scripts/
 │   └── sync-from-upstream.sh   # re-vendor files/ + recompute PKG_HASH for a tag
 ├── .github/workflows/
@@ -137,6 +150,7 @@ available.
 - [x] Write `net/tollgate-wrt/Makefile` (single package, both binaries)
 - [x] Write `scripts/sync-from-upstream.sh` (idempotent, `shellcheck` clean)
 - [x] Write `.github/workflows/validate-feed.yml` (validate + go-smoke + build-sdk)
+- [x] Add `net/mptcp-bonding/` pure-files package (init.d, sysctl, UCI, setup-bond helper)
 - [x] Enhance `build-sdk`: run on main pushes, 3-arch matrix (x86-64 +
       mediatek-filogic + ramips-mt7621), upload package artifacts
       (smoke test intentionally omitted to keep it simple)

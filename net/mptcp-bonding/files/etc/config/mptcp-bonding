@@ -1,0 +1,17 @@
+# Convergence-point VPS (deployed by c03rad0r/tg-mptcp-server Ansible).
+# Fill these in before `uci set mptcp-bonding.main.enabled=1`.
+
+config main 'main'
+	option enabled '0'
+	# Public host / IP of the MPTCP bonding server.
+	option server ''
+	# shadowsocks server port (Ansible default: 65101).
+	option server_port '65101'
+	# shadowsocks password — must match the server's ss-manager config.
+	option password ''
+	# shadowsocks cipher — must match the server (default: aes-256-gcm).
+	option cipher 'aes-256-gcm'
+	# Local transparent-proxy port ss-redir listens on.
+	option local_port '1081'
+	# Max subflows the kernel may open per connection (0 = unlimited).
+	option subflows '2'
