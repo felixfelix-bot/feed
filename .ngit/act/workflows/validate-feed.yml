@@ -1,0 +1,151 @@
+name: Validate Feed
+
+# ngit (Nostr) CI copy of .github/workflows/validate-feed.yml.
+# Adaptations for the .ngit/act runner (see ~/repos/ngit-ci/docs/act-workflows.md):
+#   1. `schedule:` removed -- ngit-ci has no timer, so the cron can never fire.
+#      The weekly intent is preserved by the push/pull_request triggers below.
+#   2. The `build-sdk` job is NOT ported. It declares
+#          container:
+#            image: openwrt/sdk:${{ matrix.target }}-v25.12.5
+#            options: --user root
+#      and ngit-ci refuses any `container:` block when the operator sets container
+#      options (NGIT_CI_ACT_CONTAINER_OPTIONS is set on this coordinator). Because a
+#      coordinator claims a workflow file as a WHOLE, keeping that job here would turn
+#      this entire file into a startup_failure. It is also a 30-60 min job against a
+#      30-minute run timeout. It stays on GitHub, where it remains the authoritative
+#      gate; the jobs below are the ones Nostr CI can actually run.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+env:
+  PKG_DIR: net/tollgate-wrt
+  UPSTREAM: OpenTollGate/tollgate-module-basic-go
+
+jobs:
+  validate:
+    name: Lint Makefile, verify hash & files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint Makefile fields
+        run: |
+          set -e
+          M="$PKG_DIR/Makefile"
+          [ -f "$M" ] || { echo "FAIL: $M not found"; exit 1; }
+          for field in PKG_NAME PKG_VERSION PKG_RELEASE PKG_SOURCE_URL PKG_HASH \
+                       PKG_LICENSE GO_PKG GO_PKG_BUILD_PKG; do
+            grep -q "^${field}:" "$M" || { echo "FAIL: missing $field"; exit 1; }
+          done
+          grep -q 'BuildPackage' "$M" || { echo "FAIL: missing BuildPackage eval"; exit 1; }
+
+          # Upstream policy: REPLACES is not allowed in openwrt/packages.
+          grep -q 'REPLACES' "$M" && { echo "FAIL: REPLACES not allowed upstream"; exit 1; }
+
+          echo "Makefile lint passed."
+
+      - name: Verify PKG_HASH against the source tarball
+        run: |
+          set -e
+          M="$PKG_DIR/Makefile"
+          EXPECTED=$(grep '^PKG_HASH:' "$M" | sed 's/^PKG_HASH:=//')
+          PKG_VERSION=$(grep '^PKG_VERSION:' "$M" | sed 's/^PKG_VERSION:=//')
+          [ "$EXPECTED" != "skip" ] || { echo "FAIL: PKG_HASH is 'skip'"; exit 1; }
+
+          URL="https://codeload.github.com/${UPSTREAM}/tar.gz/v${PKG_VERSION}"
+          echo "Fetching $URL"
+          ACTUAL=$(curl -fsSL "$URL" | sha256sum | awk '{print $1}')
+          echo "expected=$EXPECTED"
+          echo "actual  =$ACTUAL"
+          [ "$EXPECTED" = "$ACTUAL" ] || { echo "FAIL: PKG_HASH mismatch"; exit 1; }
+
+      - name: Verify every ./files/ path referenced by the Makefile exists
+        run: |
+          set -e
+          M="$PKG_DIR/Makefile"
+          # Pull out ./files/... tokens, strip a trailing glob '*' or cp '/.' suffix.
+          grep -oP '\./files/\S+' "$M" \
+            | sed -e 's/\*$//' -e 's#/\.$##' \
+            | sort -u \
+            | while IFS= read -r ref; do
+                [ -e "$PKG_DIR/$ref" ] || { echo "FAIL: Makefile references $ref but $PKG_DIR/$ref is missing"; exit 1; }
+              done
+          echo "All referenced files/ paths exist."
+
+      - name: Verify the critical runtime files are vendored
+        run: |
+          set -e
+          for f in \
+            files/etc/init.d/tollgate-wrt \
+            files/etc/config/firewall-tollgate \
+            files/etc/uci-defaults/99-tollgate-setup \
+            files/etc/uci-defaults/90-tollgate-captive-portal-symlink \
+            files/etc/hotplug.d/iface/95-tollgate-restart \
+            files/lib/upgrade/keep.d/tollgate; do
+            [ -f "$PKG_DIR/$f" ] || { echo "FAIL: missing $f"; exit 1; }
+          done
+          echo "Critical files present."
+
+  go-smoke:
+    name: Go cross-compile (no SDK)
+    runs-on: ubuntu-latest
+    # ngit-ci ADAPTATION: inside the act container `go build` fails while
+    # stamping VCS metadata ("error obtaining VCS status: exit status 128" --
+    # the checkout is not readable as a git repo from inside the job container).
+    # VCS stamping has no bearing on whether the code compiles, so it is turned
+    # off. Observed on the Nostr run of 2ceb9f8, job b0a168450ccc7243.
+    env:
+      GOFLAGS: -buildvcs=false
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goarch: amd64,                      goarm: "",  gomips: "" }
+          - { goarch: arm64,                      goarm: "",  gomips: "" }
+          - { goarch: mipsle,                     goarm: "",  gomips: softfloat }
+    steps:
+      - uses: actions/checkout@v4
+
+      # ngit-ci ADAPTATION: actions/setup-go@v5 verifiably fails inside the act
+      # image -- it downloads the toolchain, then dies with
+      #   /bin/sh: 1: version: not found
+      # (its post-install probe cannot resolve `go` on this image; the first run
+      # of this file on Nostr failed exactly there, job id
+      # efb2e468a20de5bdceb522cdbba893575d14bbafae3c86440e76d0fe3ade4f48).
+      # The toolchain is fetched from go.dev at the same pinned version the
+      # action selected, so the job still builds with Go 1.24.
+      - name: Install Go 1.24
+        run: |
+          set -e
+          GO_VERSION=1.24.13
+          ARCH="$(dpkg --print-architecture)"   # amd64
+          curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${ARCH}.tar.gz" -o /tmp/go.tgz
+          sudo rm -rf /usr/local/go
+          sudo tar -C /usr/local -xzf /tmp/go.tgz
+          echo "/usr/local/go/bin" >> "$GITHUB_PATH"
+          /usr/local/go/bin/go version
+
+      - name: Download pinned upstream source
+        run: |
+          set -e
+          PKG_VERSION=$(grep '^PKG_VERSION:' "$PKG_DIR/Makefile" | sed 's/^PKG_VERSION:=//')
+          URL="https://codeload.github.com/${UPSTREAM}/tar.gz/v${PKG_VERSION}"
+          curl -fsSL "$URL" | tar -xz
+          echo "TOLLGATE_SRC=$PWD/tollgate-module-basic-go-$PKG_VERSION/src" >> "$GITHUB_ENV"
+
+      - name: Build service + CLI for ${{ matrix.goarch }}
+        env:
+          CGO_ENABLED: "0"
+          GOOS: linux
+          GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
+          GOMIPS: ${{ matrix.gomips }}
+        run: |
+          set -e
+          # Service: main module root at src/.
+          (cd "$TOLLGATE_SRC" && go build -o /dev/null .)
+          # CLI: separate module at src/cmd/tollgate-cli/.
+          (cd "$TOLLGATE_SRC/cmd/tollgate-cli" && go build -o /dev/null .)

@@ -193,15 +193,25 @@ jobs:
         # re-saves); restore-keys prefix finds the previous run's cache for
         # this target. Note: 10 GB/repo cap — 3 arches may occasionally evict
         # (self-healing: one cold run, then re-cached).
+        #
+        # The key is NAMESPACED with the SDK image version (v25.12.5). This is
+        # mandatory: a cache built against one toolchain (e.g. the moving
+        # openwrt/sdk:*-master images, glibc >=2.42) poisons a build against a
+        # different one (pinned v25.12.5, glibc <2.42). Root-caused 2026-09-08:
+        # ramips-mt7621 restored a stale Aug-24 -master cache into the pinned
+        # image → gettext-full [host] failed (~16 min in) with
+        # "ctype.h: operator '||' has no left operand" / "#if with no expression"
+        # while x86-64/mediatek (which had saved fresh post-pin caches) passed.
+        # Bump this namespace tag whenever the SDK image version changes.
         uses: actions/cache@v4
         with:
           path: |
             /builder/staging_dir
             /builder/build_dir
             /builder/dl
-          key: sdkbuild-${{ matrix.target }}-${{ github.run_id }}
+          key: sdkbuild-${{ matrix.target }}-v25.12.5-${{ github.run_id }}
           restore-keys: |
-            sdkbuild-${{ matrix.target }}-
+            sdkbuild-${{ matrix.target }}-v25.12.5-
 
       - name: Add this feed alongside the standard feeds
         shell: bash
