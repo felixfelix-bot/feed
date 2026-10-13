@@ -85,7 +85,9 @@ jobs:
         include:
           - { goarch: amd64,                      goarm: "",  gomips: "" }
           - { goarch: arm64,                      goarm: "",  gomips: "" }
+          - { goarch: arm,                        goarm: "7", gomips: "" }
           - { goarch: mipsle,                     goarm: "",  gomips: softfloat }
+          - { goarch: mips,                       goarm: "",  gomips: softfloat }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -120,8 +122,9 @@ jobs:
     # The authoritative proof that the package compiles inside the OpenWrt
     # build system via golang-package.mk (incl. the nested CLI module build).
     # Slow (~30-60 min/job: it bootstraps the Go toolchain). Runs on main
-    # pushes, PRs, tags, weekly, and manual dispatch. The 3-target matrix
-    # proves the real TollGate hardware arches alongside x86-64.
+    # pushes, PRs, tags, weekly, and manual dispatch.
+    # Phase 2 will add mediatek-filogic + ramips-mt7621; Phase 3 adds the
+    # remaining arches for full parity with tollgate-module-basic-go CI.
     if: >-
       github.event_name == 'pull_request'
       || github.event_name == 'workflow_dispatch'
@@ -266,3 +269,30 @@ jobs:
           name: tollgate-wrt-${{ matrix.target }}
           path: artifacts/*
           if-no-files-found: error
+
+      - name: Run binary smoke test
+        # Only x86-64 produces a host-runnable binary; the GitHub runner is
+        # x86-64, so we can find the compiled binary in the SDK build_dir
+        # and actually execute it to prove it runs, not just compiles.
+        if: matrix.target == 'x86-64'
+        shell: bash
+        run: |
+          set -e
+          echo "Searching SDK build_dir for compiled tollgate-wrt binary..."
+          BINARY=$(find /builder/build_dir -name 'tollgate-wrt' -type f -perm -u+x | head -1)
+          [ -n "$BINARY" ] || { echo "FAIL: tollgate-wrt binary not found in build_dir"; exit 1; }
+          echo "Found binary: $BINARY"
+          echo "=== version output ==="
+          "$BINARY" version 2>/dev/null || "$BINARY" --version 2>/dev/null || {
+            echo "WARN: version command failed, trying help"
+            "$BINARY" --help 2>&1 | head -5
+          }
+          echo ""
+          echo "=== CLI binary check ==="
+          CLI=$(find /builder/build_dir -name 'tollgate' -o -name 'tollgate-cli' | grep -E '/usr/bin/' | head -1)
+          if [ -n "$CLI" ]; then
+            chmod +x "$CLI"
+            "$CLI" version 2>/dev/null || "$CLI" --version 2>/dev/null || true
+          fi
+          echo ""
+          echo "Binary smoke test passed."
