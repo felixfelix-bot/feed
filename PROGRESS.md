@@ -1,3 +1,50 @@
+# PROGRESS — pass 2 (independent re-derivation): procd init + UCI, net/mptcp-bonding
+
+Deliverable this pass: `/home/c08r4d0r/worktrees/wz-mptcp-init-uci-review/REPORT-pass2-init-uci.md`
+(pass 1's deliverable stays at `REPORT.md`, unmodified).
+
+Target: commit `5b765992f5546a1c9de7fedb55853b4d2fed43ce`, branch `feat/mptcp-bonding-only`, repo
+`feed-freedomtech` (NOT net4sats-mvp-v2 — premise correction, see REPORT.md / REPORT-pass2 intro).
+Worktree: `/home/c08r4d0r/worktrees/wz-mptcp-init-uci-review`.
+
+Retrieval re-verified first-hand this pass: `git diff 5b765992f -- net/mptcp-bonding/` → 0 lines;
+sha256 init.d `9304d669…`, config `4d4e30db…`; `sh -n` + `dash -n` → exit 0.
+
+| # | Finding | Severity | Status | Files touched |
+|---|---|---|---|---|
+| N1 | `-u` enables UDP relay but ss-redir 3.3.5 says "TPROXY is required in redir mode"; package installs ZERO tproxy rules (whole-package grep) | BLOCKER | NEW this pass, verified live against installed ss-redir -h | REPORT-pass2 only |
+| N2 | ss-redir supports `--mptcp`; init never passes it, so ss-redir's TCP connection is a plain TCP socket → no subflows → no bonding | MAJOR | NEW this pass, verified live (`ss-redir -h` lists `--mptcp`) | REPORT-pass2 only |
+| N3 | UCI `subflows` + init.d:36-37 write to `/proc/sys/net/mptcp/subflows`, which does NOT exist in mainline kernel → dead config | MINOR | NEW/ sharpen of pass-1 F5; verified live (`ls /proc/sys/net/mptcp/` has no `subflows`) | REPORT-pass2 only |
+| P1 | No redirection toward ss-redir anywhere (no TPROXY/REDIRECT/nft/iptables/ip rule) | BLOCKER | CONFIRMED (pass-1 F1), +N1/N2 as new corroborating evidence | REPORT-pass2 only |
+| P2 | No `stop_service()` teardown hook (grep → 0 matches) | MAJOR | CONFIRMED (pass-1 F2) | REPORT-pass2 only |
+| P3 | `START=90`, no `STOP=`, ordering undocumented/untested | MAJOR | CONFIRMED (pass-1 F4) | REPORT-pass2 only |
+| P4 | bare `procd_set_param respawn`, no file/pidfile/limits | MINOR | CONFIRMED (pass-1 F7) | REPORT-pass2 only |
+| P5 | sysctl write swallowed by `2>/dev/null` | MINOR | CONFIRMED (pass-1 F8) | REPORT-pass2 only |
+| P6 | `-b 0.0.0.0` exposes proxy port on WAN | MINOR | CONFIRMED (pass-1 F6) | REPORT-pass2 only |
+| C1 | CHECKED AND FOUND CORRECT: scaffolding (shebang, USE_PROCD=1, EXTRA_COMMANDS not required), instance def + quoting + path matching Makefile install, validation gate ordering, reload re-reads UCI, UCI↔init 1:1 matrix (0/0/0/0 mismatches), log paths | CORRECT | VERIFIED first-hand this pass | REPORT-pass2 only |
+
+New evidence gathered this pass (commands observed, first-hand):
+- `ss-redir -h` (shadowsocks-libev 3.3.5, /usr/bin/ss-redir) → `[-u] Enable UDP relay. TPROXY is
+  required in redir mode.` and `[--mptcp] Enable Multipath TCP on MPTCP Kernel.`
+- `ls /proc/sys/net/mptcp/` (7.0.0-38-generic) → 13 keys, **no** `subflows`.
+- package-wide `grep -rniE "iptables|nft|TPROXY|REDIRECT|ip rule|ip route|fwmark|-j "` → only two
+  prose hits, both in Makefile → 0 rule definitions.
+- `grep -n "stop_service|reload_service|EXTRA_COMMANDS|STOP="` on init.d → 0 matches.
+- `sh -n` + `dash -n` on init.d → exit 0, no output.
+
+## Verification ledger (observed)
+- worktree bytes == commit bytes: `git diff 5b765992f -- net/mptcp-bonding/` → 0 lines
+- sha256 init.d `9304d669632dfa4c076d0472eb87c1587ee10521ae9a846e3a45c09e615676df`
+- sha256 config `4d4e30db58f9e25cbbbecbf3362b4a1d06811a6efa1889963ca21809fa770adb`
+- `git ls-remote origin refs/heads/feat/mptcp-bonding-only` → `0c9430f13…` == local HEAD at review
+
+## Commit / push ship log (observed)
+(pass 2 — appended below once executed)
+
+## Remaining steps
+(pass 2 — updated below once executed)
+
+---
 # PROGRESS — cold review: procd init script + UCI config/defaults, net/mptcp-bonding
 
 Target: commit `5b765992f5546a1c9de7fedb55853b4d2fed43ce`, branch `feat/mptcp-bonding-only`,
