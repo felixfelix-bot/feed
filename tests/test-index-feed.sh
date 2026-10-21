@@ -213,6 +213,101 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 4b. artifact-arch.sh APKv3 path: the adbdump parse must match the REAL
+#     apk-tools3 output format (MEASURED 2026-10-21, apk-tools 3.0.8-r0
+#     static, against a real 25.12 SDK-built tollgate-wrt APKv3 package):
+#
+#       #%SCHEMA: 676B6370
+#       # ADB block, size: 10272, compat: 0, ver: 0
+#       info:
+#         name: tollgate-wrt
+#         version: 0.6.0_alpha1-r1
+#         ...
+#         arch: aarch64_cortex-a53
+#
+#     i.e. UNQUOTED YAML `arch: <tuple>` under `info:`. A parse that only
+#     matches quoted values (`arch: "..."`) works against a synthetic JSON
+#     stub but fails on every real artifact — exactly what the 2026-10-21
+#     consumption run hit. This section pins the real format so the stub
+#     cannot drift from reality again.
+# ---------------------------------------------------------------------------
+
+echo "== 4b. artifact-arch.sh: real adbdump format (unquoted YAML arch) =="
+
+# A stub apk whose adbdump output is BYTE-FOR-BYTE the real 3.0.8 format
+# (unquoted YAML; arch deliberately NOT the first info field).
+STUBADB="$TMP/stubadb"; rm -rf "$STUBADB"; mkdir -p "$STUBADB"
+cat > "$STUBADB/apk" <<'STUBADB'
+#!/bin/sh
+case "$1" in
+--version) echo "apk-tools 3.0.8-r0 (real-format stub)"; exit 0 ;;
+adbdump)
+    cat <<'YAML'
+#%SCHEMA: 676B6370
+# ADB block, size: 10272, compat: 0, ver: 0
+info:
+  name: tollgate-wrt
+  version: 0.6.0_alpha1-r1
+  hashes: 46e8ed0c04f953a88f309c86fa4d3d826c7bae25
+  description: |
+    TollGate turns an OpenWrt router into a Cashu-powered payment gateway.
+  arch: aarch64_cortex-a53
+  license: GPL-3.0-only
+  origin: /workspace/net/tollgate-wrt
+  maintainer: Felix <felix@tollgate.me>
+  url: https://tollgate.me
+  installed-size: 19488818
+  depends: # 3 items
+    - jq
+    - libc
+    - nodogsplash
+  provides: # 1 items
+    - tollgate-wrt-any
+paths: # 24 items
+  - acl:
+      mode: 0755
+      user: root
+      group: root
+YAML
+    exit 0 ;;
+*) echo "real-format stub apk: unexpected subcommand: $*" >&2; exit 1 ;;
+esac
+STUBADB
+chmod +x "$STUBADB/apk"
+
+V3REAL="$TMP/v3real-format.apk"
+printf 'ADBd' > "$V3REAL"
+head -c 64 /dev/urandom >> "$V3REAL"
+
+got=$(PATH="$STUBADB:$PATH" sh "$ART_PROBE" "$V3REAL" 2>/dev/null || true)
+[ "$got" = "aarch64_cortex-a53" ] \
+    && pass "real-format adbdump -> arch parsed (unquoted YAML)" \
+    || fail "real-format adbdump parse broken: got '$got' (expected aarch64_cortex-a53)"
+
+# The parse must read `arch:`, not accidentally match `installed-size:` or a
+# provides item; and a dump WITHOUT an arch line must hard-fail.
+cat > "$STUBADB/apk" <<'STUBADB2'
+#!/bin/sh
+case "$1" in
+--version) echo "apk-tools 3.0.8-r0 (real-format stub)"; exit 0 ;;
+adbdump)
+    cat <<'YAML'
+#%SCHEMA: 676B6370
+info:
+  name: tollgate-wrt
+  version: 0.6.0_alpha1-r1
+YAML
+    exit 0 ;;
+*) echo "real-format stub apk: unexpected subcommand: $*" >&2; exit 1 ;;
+esac
+STUBADB2
+if PATH="$STUBADB:$PATH" sh "$ART_PROBE" "$V3REAL" >/dev/null 2>&1; then
+    fail "adbdump without arch must exit non-zero"
+else
+    pass "adbdump without arch exits non-zero"
+fi
+
+# ---------------------------------------------------------------------------
 # 5. APKv3 (ADBd, OpenWrt 25.12+): fail loudly without native apk
 # ---------------------------------------------------------------------------
 
