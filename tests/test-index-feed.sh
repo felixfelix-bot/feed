@@ -431,7 +431,15 @@ case "$1" in
 --version) echo "apk-tools 3.0.5 (test stub)"; exit 0 ;;
 adbdump)
     shift
-    echo '{"name":"tollgate-wrt","arch":"aarch64_cortex-a53"}'
+    # Real apk-tools 3.0.8 format: unquoted YAML (see section 4b). The old
+    # JSON form masked a parse that only matched quoted values.
+    cat <<'YAML'
+#%SCHEMA: 676B6370
+info:
+  name: tollgate-wrt
+  version: 0.5.0-r1
+  arch: aarch64_cortex-a53
+YAML
     exit 0 ;;
 index|mkndx)
     cmd="$1"; shift

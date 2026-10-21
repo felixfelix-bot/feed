@@ -37,6 +37,13 @@ control (`Architecture:`). The feed layout uses tuples — never target names.
 (extend it when adding SDK targets); `scripts/artifact-arch.sh` reads the
 tuple embedded in a package file.
 
+> **APKv3 arch read (measured 2026-10-21, apk-tools 3.0.8-r0):** the tuple
+> inside an APKv3/ADBd package is read via `apk adbdump`, which emits
+> **unquoted YAML** — `  arch: aarch64_cortex-a53` under `info:` (not a
+> quoted/JSON value). `artifact-arch.sh` anchors its parse on
+> `^\s*arch:\s*<tuple>$` so it cannot match `installed-size:` or `provides`
+> items; the suite (section 4b) pins the byte-for-byte real format.
+
 ## Pipeline
 
 ```

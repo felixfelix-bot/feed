@@ -57,9 +57,17 @@ case "$f" in
         if [ "$magic" = "ADBd" ]; then
             # APKv3 — needs apk-tools3.
             if command -v apk >/dev/null 2>&1; then
+                # apk adbdump emits UNQUOTED YAML (measured 2026-10-21,
+                # apk-tools 3.0.8-r0): "  arch: aarch64_cortex-a53" under
+                # "info:". Accept the unquoted form first, then a quoted
+                # form for forward compat. Anchored ^\s*arch: so it cannot
+                # match installed-size:/origin:/provides items.
                 dump=$(apk adbdump "$f" 2>/dev/null || true)
                 arch=$(printf '%s\n' "$dump" \
-                    | sed -n 's/.*[^a-z]arch[^a-z][^"]*"\([a-z0-9_.-]*\)".*/\1/p' \
+                    | sed -n 's/^[[:space:]]*arch:[[:space:]]*\([a-z0-9_.-]*\)[[:space:]]*$/\1/p' \
+                    | head -n1)
+                [ -n "$arch" ] || arch=$(printf '%s\n' "$dump" \
+                    | sed -n 's/^[[:space:]]*arch:[[:space:]]*"\([a-z0-9_.-]*\)"[[:space:]]*$/\1/p' \
                     | head -n1)
                 [ -n "$arch" ] || {
                     echo "ERROR: apk adbdump yielded no arch for $f (dump parse failed)" >&2
