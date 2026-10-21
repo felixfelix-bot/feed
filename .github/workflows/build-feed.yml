@@ -1,0 +1,345 @@
+name: Build Feed
+
+# ---------------------------------------------------------------------------
+# Publish the binary feed: workflow artifacts -> tagged release -> per-arch
+# indices -> gh-pages.
+#
+# Pipeline (rebased from closed PR #1, rebuilt for the src-git layout):
+#
+#   validate-feed.yml   builds .apk/.ipk per SDK target (x86-64,
+#                       mediatek-filogic, ramips-mt7621) as WORKFLOW
+#                       artifacts — it has no release bridge of its own.
+#
+#   build-feed.yml      THIS file. Entry paths:
+#
+#   A. TAG PUSH (release path). validate-feed's tag run completes ->
+#      workflow_run fires (tag refs only): `bridge` stages THAT run's
+#      per-target artifacts as one canonical tree; `index` (OpenWrt SDK
+#      container — REQUIRED: 25.12 packages are APKv3/ADBd and only
+#      apk-tools3, shipped in the SDK, can index them) verifies each
+#      artifact's embedded arch tuple against target-to-arch.sh and runs
+#      scripts/index-feed.sh per target; `publish-release` creates the
+#      release (if missing) and uploads tuple-suffixed packages
+#      (tollgate-wrt-0.5.0-r1_aarch64_cortex-a53.apk — flat release assets
+#      cannot host three identical canonical filenames) plus the indices;
+#      `publish-pages` deploys the feed tree to gh-pages.
+#
+#   B. RELEASE PUBLISHED (re-index path, e.g. a release manager attached
+#      assets by hand): `collect` downloads them flat; arches are detected
+#      from embedded metadata — PR #1's original indexer design.
+#
+#   C. WORKFLOW_DISPATCH with artifact_release input — manual re-index of
+#      an older release tag.
+#
+#   Feed layout: one directory per OpenWrt arch TUPLE (aarch64_cortex-a53,
+#   mipsel_24kc, x86_64, ...), artifacts flat next to APKINDEX.tar.gz /
+#   Packages.gz so apk/opkg resolve Filename relative to the index.
+#
+#   gh-pages is the DEFAULT publish channel (Q3 decision): stable consumer
+#   URL https://freedomtechfeed.github.io/feed/<tuple>/ once Pages is
+#   enabled (Settings -> Pages -> Source: gh-pages branch, one-time manual
+#   step; this workflow only keeps the branch fresh).
+#
+# Ordering note: a tag only triggers the bridge if this workflow file is
+# already on the default branch — MERGE FIRST, TAG SECOND.
+# ---------------------------------------------------------------------------
+
+on:
+  workflow_run:
+    workflows: ["Validate Feed"]
+    types: [completed]
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      artifact_release:
+        description: 'Release tag whose assets to index (defaults to the triggering tag)'
+        required: false
+
+permissions:
+  contents: write   # create release + attach assets + push gh-pages branch
+
+concurrency:
+  group: build-feed-${{ github.event.workflow_run.head_branch || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # --- Path A only: stage the tag run's workflow artifacts -----------------
+  bridge:
+    name: Stage workflow artifacts (${{ github.event.workflow_run.head_branch }})
+    if: >-
+      github.event_name == 'workflow_run'
+      && github.event.workflow_run.conclusion == 'success'
+      && startsWith(github.event.workflow_run.head_branch, 'v')
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - name: Resolve tag
+        id: tag
+        run: echo "tag=${{ github.event.workflow_run.head_branch }}" >> "$GITHUB_OUTPUT"
+
+      # One directory per artifact name (= per SDK target): download
+      # WITHOUT merge-multiple so packages keep their target provenance
+      # and their canonical filenames. Embedded-arch verification happens
+      # in the `index` job, which runs where apk-tools3 exists (APKv3).
+      - name: Download build-sdk artifacts from run ${{ github.event.workflow_run.id }}
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ github.event.workflow_run.id }}
+          pattern: tollgate-wrt-*
+          path: canonical
+
+      - name: Sanity-check the staged tree
+        run: |
+          set -eu
+          found=0
+          for d in canonical/tollgate-wrt-*/; do
+            [ -d "$d" ] || continue
+            found=1
+            ls "$d"/*.apk "$d"/*.ipk >/dev/null 2>&1 \
+              || { echo "::error::no package files in artifact $d"; exit 1; }
+          done
+          [ "$found" -eq 1 ] || { echo "::error::no tollgate-wrt-* artifacts in run"; exit 1; }
+          echo "=== staged ==="; find canonical -type f | sort
+
+      - name: Hand canonical tree to the indexer
+        uses: actions/upload-artifact@v4
+        with:
+          name: feed-packages-${{ steps.tag.outputs.tag }}
+          path: canonical/
+          if-no-files-found: error
+          retention-days: 7
+
+  # --- Paths B/C only: flat release assets -> artifact ---------------------
+  collect:
+    name: Collect release assets (${{ github.event.release.tag_name || github.event.inputs.artifact_release || 'manual' }})
+    if: >-
+      github.event_name != 'workflow_run'
+      && (github.event_name == 'release' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.release.tag_name || github.event.inputs.artifact_release }}
+        run: |
+          set -eu
+          [ -n "$TAG" ] || { echo "::error::no tag to collect (dispatch needs artifact_release)"; exit 1; }
+          mkdir -p artifacts
+          if gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir artifacts --clobber; then
+            echo "Downloaded $(find artifacts -mindepth 1 -maxdepth 1 -type f | wc -l) asset(s)"
+          else
+            echo "::warning::release '$TAG' has no assets or does not exist yet; nothing to index"
+          fi
+          ls -la artifacts || true
+      - name: Hand assets to the indexer
+        uses: actions/upload-artifact@v4
+        with:
+          name: feed-release-assets
+          path: artifacts/
+          if-no-files-found: warn
+          retention-days: 7
+
+  # --- All paths: index. MUST run where apk-tools3 lives (APKv3) -----------
+  index:
+    name: Index feed (${{ needs.bridge.outputs.tag || github.event.release.tag_name || github.event.inputs.artifact_release || 'manual' }})
+    needs: [bridge, collect]
+    # - tag refs only for workflow_run (validate-feed completes on every
+    #   branch/PR; those must SKIP, not fail)
+    # - exactly one of bridge/collect ran (or collect produced nothing)
+    if: >-
+      !failure() && !cancelled()
+      && (needs.bridge.result == 'success'
+          || needs.collect.result == 'success'
+          || needs.collect.result == 'skipped')
+      && (github.event_name != 'workflow_run'
+          || startsWith(github.event.workflow_run.head_branch, 'v'))
+    # Index generation is host-arch-independent, but it MUST see apk-tools3:
+    # OpenWrt 25.12 packages are APKv3 (ADBd) — not tarballs, not parseable
+    # by the POSIX fallback. The SDK image ships apk-tools3 at
+    # /builder/staging_dir/host/bin, which is NOT on the container's default
+    # PATH (measured in-container: "apk: not found") — every run step below
+    # prepends it. Pinned to the same image family as validate-feed's
+    # build-sdk matrix.
+    container:
+      image: openwrt/sdk:x86-64-v25.12.5
+      options: --user root
+    outputs:
+      tag: ${{ steps.rel.outputs.tag }}
+      indexed: ${{ steps.gen.outputs.indexed }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve release tag
+        id: rel
+        env:
+          BRIDGE_TAG: ${{ needs.bridge.outputs.tag }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          INPUT_TAG: ${{ github.event.inputs.artifact_release }}
+        run: |
+          if   [ -n "$INPUT_TAG" ];   then tag="$INPUT_TAG"
+          elif [ -n "$BRIDGE_TAG" ];  then tag="$BRIDGE_TAG"
+          elif [ -n "$RELEASE_TAG" ]; then tag="$RELEASE_TAG"
+          else echo "::error::no tag resolvable (dispatch without artifact_release?)"; exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Indexing release: $tag"
+          export PATH="/builder/staging_dir/host/bin:$PATH"
+          apk --version
+
+      # Path A: canonical per-target tree from the bridge job.
+      - name: Collect artifacts (bridge path)
+        if: needs.bridge.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: feed-packages-${{ steps.rel.outputs.tag }}
+          path: bridge-packages
+
+      # Paths B/C: flat assets from the release itself.
+      - name: Collect artifacts (release path)
+        if: needs.bridge.result != 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: feed-release-assets
+          path: artifacts
+
+      - name: Verify arch tuples & generate indices
+        id: gen
+        run: |
+          set -eu
+          export PATH="/builder/staging_dir/host/bin:$PATH"
+          apk --version
+          mkdir -p feed
+          if [ -d bridge-packages ]; then
+            # Path A: one index-feed pass per SDK-target dir. index-feed.sh
+            # groups by EMBEDDED arch tuple (via apk-tools3 for APKv3), so
+            # each pass lands its arch in feed/<tuple>/ without cross-target
+            # filename collisions. Then verify: the tuple(s) produced for a
+            # target must match target-to-arch.sh for that target — the
+            # release bridge's mispublication guard.
+            for d in bridge-packages/*/; do
+              [ -d "$d" ] || continue
+              target=$(basename "$d")
+              target=${target#tollgate-wrt-}
+              expected=$(sh scripts/target-to-arch.sh "$target")
+              before=$(ls feed 2>/dev/null || true)
+              sh scripts/index-feed.sh "$PWD/$d" "$PWD/feed"
+              for t in $(ls feed); do
+                case " $before " in *" $t "*) continue ;; esac
+                if [ "$t" != "$expected" ]; then
+                  echo "::error::$target artifacts indexed as '$t' but target maps to '$expected' — refusing to publish"
+                  exit 1
+                fi
+              done
+              echo "  $target -> $expected OK"
+            done
+          else
+            # Paths B/C: single flat dir, mixed arches, unique filenames.
+            sh scripts/index-feed.sh "$PWD/artifacts" "$PWD/feed"
+          fi
+          n=$(find feed -type f \( -name 'Packages.gz' -o -name 'APKINDEX.tar.gz' -o -name 'packages.adb' \) | wc -l | tr -d ' ')
+          echo "indexed=$n" >> "$GITHUB_OUTPUT"
+          [ "$n" -gt 0 ] || { echo "::error::no indices generated"; exit 1; }
+          echo "=== feed tree ==="; find feed -type f | sort
+
+      - name: Upload feed tree artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: feed-${{ steps.rel.outputs.tag }}
+          path: feed/
+          if-no-files-found: error
+          retention-days: 90
+
+  # --- Attach packages + indices to the GitHub release ---------------------
+  publish-release:
+    name: Publish release assets (${{ needs.index.outputs.tag }})
+    needs: index
+    if: >-
+      !failure() && !cancelled()
+      && needs.index.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download feed tree
+        uses: actions/download-artifact@v4
+        with:
+          name: feed-${{ needs.index.outputs.tag }}
+          path: feed
+
+      - name: Create release (if missing)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.index.outputs.tag }}
+        run: |
+          set -eu
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "release $TAG already exists"
+          else
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --verify-tag --title "Feed $TAG" \
+              --notes "Automated feed release. Packages are arch-tuple-suffixed for the flat asset list; per-tuple indices (packages.adb for apk-tools3 consumers, APKINDEX.tar.gz / Packages.gz for legacy) and the self-contained feed tree are attached here, and the gh-pages branch is the stable feed URL. See docs/feed-index.md."
+          fi
+
+      - name: Upload assets (tuple-suffixed packages + indices)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.index.outputs.tag }}
+        run: |
+          set -eu
+          # Structure-preserving tarball: the apk/opkg-consumable feed.
+          tar -czf "feed-${TAG}.tar.gz" -C feed .
+          gh release upload "$TAG" "feed-${TAG}.tar.gz" --repo "$GITHUB_REPOSITORY" --clobber
+          # Flattened assets. GitHub release asset names cannot contain '/',
+          # so indices carry their tuple as a prefix and packages as a
+          # suffix (three arches share one canonical filename).
+          mkdir -p flat
+          find feed -type f | while IFS= read -r f; do
+            tuple=$(basename "$(dirname "$f")")
+            base=$(basename "$f")
+            case "$base" in
+              APKINDEX.tar.gz|Packages.gz|Packages|packages.adb) cp "$f" "flat/${tuple}-${base}" ;;
+              *) ext=${base##*.}; stem=${base%.*}; cp "$f" "flat/${stem}_${tuple}.${ext}" ;;
+            esac
+          done
+          gh release upload "$TAG" flat/* --repo "$GITHUB_REPOSITORY" --clobber
+          echo "Attached feed + $(find flat -type f | wc -l) flat assets to release $TAG"
+
+  # --- Publish target: deploy the feed tree to gh-pages (Q3 default) -------
+  # Stable consumer URL once Pages is enabled (Settings -> Pages -> Source:
+  # gh-pages branch — one-time manual repo-settings step):
+  #   https://freedomtechfeed.github.io/feed/<arch-tuple>/APKINDEX.tar.gz
+  # This job just keeps the branch fresh.
+  publish-pages:
+    needs: index
+    if: >-
+      !failure() && !cancelled()
+      && needs.index.result == 'success'
+      && github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download feed artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: feed-${{ needs.index.outputs.tag }}
+          path: feed
+      - name: Deploy feed tree to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: feed
+          publish_branch: gh-pages
+          keep_files: false
+          user_name: 'github-actions[bot]'
+          user_email: 'github-actions[bot]@users.noreply.github.com'
+          commit_message: 'feed indices for ${{ needs.index.outputs.tag }}'
+
+  # TODO (follow-up, needs human decision):
+  #   - Index signing: sign Packages.gz (opkg) / APKINDEX.tar.gz (apk) and ship
+  #     a public key. Requires a key kept as a repository secret.
+  #   - Cross-repo artifact pull: optionally fetch .ipk/.apk from each source
+  #     repo's matching release instead of relying on release assets here.
+  #   - Custom-domain mapping (releases.tollgate.me or similar) onto the Pages
+  #     site: CNAME/proxy, or an rsync/webdav deploy step.
+  #   - First run of `index` in the SDK container is the CI verdict on the
+  #     apk-tools3 invocation inside scripts/ (APKv3 adbdump probe + native
+  #     `apk index`): if flags differ in this apk version, fix there.

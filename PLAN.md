@@ -143,5 +143,6 @@ available.
 - [x] Rewrite `README.md` and `AGENTS.md`
 - [x] Verify: Makefile lint, hash check, referenced-paths check, `shellcheck`
 - [ ] _(future)_ First green `build-sdk` run across all 3 arches
+- [x] **Namespaced SDK cache keys** (fixes ramips gettext host failure — restored stale `-master` cache into pinned v25.12.5; root-caused 2026-09-08)
 - [ ] _(future)_ Lift `net/tollgate-wrt/` into a PR to `openwrt/packages`
       (swap the `golang-package.mk` include path)
