@@ -1,0 +1,63 @@
+== capture 2026-10-26T14:12Z host=x280 ==
+image: owrt2512:docs26 (podman container imported from openwrt-25.12.5-x86-64-rootfs.tar.gz)
+script: 2026-10-26-apk-semantics-x86_64.sh (committed next to this transcript)
+purpose: measure the apk behaviours that §5.1 and §5.2 of
+         feed-consumption-install.md depend on: package-scoped upgrade, exit
+         codes, what the world file records when you pin, and what `apk del`
+         does and does not remove.
+method: `jq` stands in for tollgate-wrt — every assertion is about apk's own
+        world-file, policy and purge behaviour, not about the package under test.
+        jq was chosen because it is the real declared runtime dependency of
+        tollgate-wrt, so it is the same package the install transcript pulls in.
+
+== environment ==
+release: OpenWrt 25.12.5 r33051-f5dae5ece4
+pkg mgr: apk-tools 3.0.5, compiled for x86_64.
+
+== P1  apk upgrade takes a package argument (the package-scoped form) ==
+Usage: apk upgrade [<OPTIONS>...] [<PACKAGES>...]
+--- apk upgrade <package that is not installed>:
+ERROR: Package 'tollgate-wrt' not found
+shell rc after the pipe = 0  (see P4 for what apk itself returns)
+
+== P2  apk update + apk add, and the world entry apk keeps ==
+update_exit=0  OK: 11251 distinct packages available
+add_exit=0   OK: 11.7 MiB in 137 packages
+--- world line for jq (unpinned install):
+jq
+--- apk policy jq:
+jq policy:
+  1.8.1-r2:
+    lib/apk/db/installed
+    https://downloads.openwrt.org/releases/25.12.5/packages/x86_64/packages/packages.adb
+
+== P3  pinning in the world file (the rollback mechanism) ==
+pin_exit=0  OK: 11.7 MiB in 137 packages
+--- world line after pinning:
+jq=1.8.1-r2
+--- apk policy jq after pinning (expect: UNCHANGED -- policy does not show
+    the world pin, only the indexes' offers):
+jq policy:
+  1.8.1-r2:
+    lib/apk/db/installed
+    https://downloads.openwrt.org/releases/25.12.5/packages/x86_64/packages/packages.adb
+--- ...so the pin is only visible in the world file:
+jq=1.8.1-r2
+
+== P4  exit codes: script on output, not on $? ==
+apk upgrade <unknown package>: exit=1 stderr=ERROR: Package 'tollgate-wrt' not found
+apk update with every repo reachable: exit=0
+
+== P5  apk del purges the package but NOT operator-created files ==
+before apk del: operator-notes.json
+del_exit=0  OK: 11.4 MiB in 136 packages
+--- world line for jq after del (expect: none):
+  (no jq line: the world entry is gone)
+--- what survives inside the package's own directory:
+-rw-r--r--    1 root     root            14 Oct 26 14:05 operator-notes.json
+content: operator-data
+
+  => `apk del` removes exactly the files the index lists. Anything an
+     operator put inside a package-owned directory survives, which is why
+     removing tollgate-wrt does not delete /etc/tollgate/{config,install,
+     identities}.json or ecash/.

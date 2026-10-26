@@ -1,0 +1,75 @@
+key wget exit=0
+apk update exit=0
+(1/2) Installing jq (1.8.1-r2)
+  Executing jq-1.8.1-r2.post-install
+(2/2) Installing tollgate-wrt (0.6.0_alpha2-r1)
+OK: 39.1 MiB in 138 packages
+apk add exit=0
+tollgate-wrt-0.6.0_alpha2-r1 x86_64 {tollgate-wrt} (GPL-3.0-only) [installed]
+--- start the service by hand (no procd in this container) ---
+srw-rw----    1 root     root             0 Sep 12 21:35 /var/run/tollgate.sock
+--- tollgate version ---
+TollGate Version
+version: v0.6.0_alpha2
+commit: dcf8c5d
+build_time: 2026-09-13T00:00:00Z
+go_version: go1.26.0
+openwrt_version: OpenWrt 25.12.5 r33051-f5dae5ece4
+version: v0.6.0_alpha2
+build_time: 2026-09-13T00:00:00Z
+commit: dcf8c5d
+go_version: go1.26.0
+openwrt_version: OpenWrt 25.12.5 r33051-f5dae5ece4
+exit=0
+--- tollgate status ---
+Service status retrieved
+running: true
+version: TollGate v0.6.0_alpha2
+uptime: 17.799201311s
+config_ok: true
+wallet_ok: true
+network_ok: true
+exit=0
+--- tollgate health ---
+healthy
+uptime: 17.836275144s
+version: TollGate v0.6.0_alpha2
+wallet_ok: true
+config_ok: true
+status: ok
+exit=0
+--- tollgate version --json ---
+{
+  "success": true,
+  "message": "TollGate Version\nversion: v0.6.0_alpha2\ncommit: dcf8c5d\nbuild_time: 2026-09-13T00:00:00Z\ngo_version: go1.26.0\nopenwrt_version: OpenWrt 25.12.5 r33051-f5dae5ece4",
+  "data": {
+    "build_time": "2026-09-13T00:00:00Z",
+    "commit": "dcf8c5d",
+    "go_version": "go1.26.0",
+    "openwrt_version": "OpenWrt 25.12.5 r33051-f5dae5ece4",
+    "version": "v0.6.0_alpha2"
+  },
+  "timestamp": "2026-09-12T21:35:26.169199644Z"
+}
+exit=0
+--- tollgate logs -n 5 ---
+Error: failed to read logs: exit status 255
+Usage:
+  tollgate logs [flags]
+
+Flags:
+  -f, --follow     Follow log output (like tail -f)
+  -h, --help       help for logs
+  -n, --tail int   Number of lines to show from the end (0 = all)
+
+Global Flags:
+  -j, --json   Output results as JSON
+
+Error: failed to read logs: exit status 255
+exit=1
+--- service log tail ---
+[36mINFO[0m[2026-09-12T21:35:18Z] 📡 Reporting gateway to upstream session manager  [36mgateway[0m=172.18.0.254 [36minterface[0m=br-6a3ff369d2db [36mmac[0m="4a:c4:cb:74:ee:b9" [36mmodule[0m=upstream_detector
+[36mINFO[0m[2026-09-12T21:35:18Z] 📝 New gateway discovered                      [36mgateway[0m=172.18.0.254 [36minterface[0m=br-6a3ff369d2db [36mmodule[0m=upstream_session_manager
+[36mINFO[0m[2026-09-12T21:35:18Z] 🔍 Checking if gateway is a TollGate           [36mgateway[0m=172.18.0.254 [36minterface[0m=br-6a3ff369d2db [36mmodule[0m=upstream_session_manager
+[36mINFO[0m[2026-09-12T21:35:21Z] ⚠️ Gateway probe failed - may not be a TollGate or temporarily unavailable  [36mattempt[0m=1 [36merror[0m="HTTP request failed: Get \"http://172.18.0.254:2121/\": dial tcp 172.18.0.254:2121: connect: no route to host" [36mgateway[0m=172.18.0.254 [36mmodule[0m=upstream_session_manager [36mtotal[0m=3
+[36mINFO[0m[2026-09-12T21:35:21Z] 🔄 Retrying tollgate probe (may not be a TollGate)  [36mattempt[0m=2 [36mgateway[0m=172.18.0.254 [36mmodule[0m=upstream_session_manager [36mtotal[0m=3
