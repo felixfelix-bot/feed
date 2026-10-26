@@ -75,7 +75,7 @@ repository line is
 https://<feed-host>/<channel>/25.12/aarch64_cortex-a53/packages.adb
 ```
 
-Two things about the bench unit that change how you read §6 and §2:
+Two things about the bench unit that shape the steps below:
 
 - It has been run on **both** package managers during this project: the bench
   MT6000 was upgraded in place to `0.6.0_rc6-r1` while still on **opkg /
@@ -258,12 +258,13 @@ tollgate health                                       # want: healthy / status: 
 
 Measured answers for each of those, and the ones that are **not** liveness
 signals (`/health`, `/healthz`, `/ready`, and any other unknown path all return
-`{"kind":10021,…}`, 815 bytes, exit 0):
+`{"kind":10021,…}`, 815 bytes, exit 0). The `id`/`pubkey`/`npub` values are
+per-install — yours will differ; the *shapes* and byte counts are what to match:
 
 ```
-GET /          -> 815 bytes  {"kind":10021,"id":"b01ff2d8…","pubkey":"600f6d39…"
+GET /          -> 815 bytes  {"kind":10021,"id":"772c4521…","pubkey":"141f3476…
 GET /whoami    ->  21 bytes  mac=00:00:00:00:00:00
-GET /identity  -> 191 bytes  {"npub":"npub1vq8k6wv…","ipv4":"100.119.48.1",…
+GET /identity  -> 191 bytes  {"npub":"npub1zs0nga4…","ipv4":"100.77.217.1",…
 GET /balance   ->  74 bytes  {"status":1,"session_active":false,"usage":0,"allotment":0,"remaining":0}
 GET /usage     ->   5 bytes  -1/-1
 GET /health    -> 815 bytes  {"kind":10021,…}   ← the / handler, NOT a health route
