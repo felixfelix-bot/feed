@@ -12,16 +12,16 @@ userland with the real package manager; the transcripts are committed under
 
 ## 0. Status: read this before handing anyone a URL
 
-**No public host served a runtime feed index on 2026-10-11.** Measured from the
-build host on that date:
+**No public host served a runtime feed index on 2026-10-11, and none did on
+2026-10-26 either.** Measured from the build host on both dates:
 
-| probe | result |
-|---|---|
-| `feed.tollgate.me` | DNS NXDOMAIN |
-| `feed.orangesync.tech` | TLS handshake failure (`curl` exit 000) |
-| `https://releases.tollgate.me/feed/<arch>` | HTTP 404 |
-| `…/feed/<arch>/packages.adb`, `…/Packages.gz`, `…/APKINDEX.tar.gz` | HTTP 404 |
-| `FreedomTechFeed/feed` releases / tags | 0 releases, 0 tags |
+| probe | 2026-10-11 | 2026-10-26 |
+|---|---|---|
+| `feed.tollgate.me` | DNS NXDOMAIN | DNS NXDOMAIN (`curl` exit 6) |
+| `feed.orangesync.tech` | TLS handshake failure (`curl` exit 000) | resolves (`23.182.128.51`), TLS still fails (`curl` exit 35) |
+| `https://releases.tollgate.me/feed/<arch>` | HTTP 404 | HTTP 404 |
+| `…/feed/<arch>/packages.adb`, `…/Packages.gz`, `…/APKINDEX.tar.gz` | HTTP 404 | HTTP 404 (also 404 under `…/feed/stable/25.12/<arch>/…`) |
+| `FreedomTechFeed/feed` releases / tags | 0 releases, 0 tags | 0 releases (`felixfelix-bot/feed` tags are all `archive/*` branch tags, not releases) |
 
 The feed exists as a **working local rehearsal tree plus a committed snapshot**
 (`records/`) and as this repository's tooling. So:
@@ -65,6 +65,48 @@ installed on the router before apk will trust anything the index offers.
   ```sh
   . /etc/openwrt_release && echo "$DISTRIB_DESCRIPTION $DISTRIB_ARCH"
   ```
+
+### 2.1 The bench GL-MT6000 specifically
+
+The GL-MT6000 is `mediatek-filogic` / **`aarch64_cortex-a53`**, i.e. its
+repository line is
+
+```
+https://<feed-host>/<channel>/25.12/aarch64_cortex-a53/packages.adb
+```
+
+Two things about the bench unit that change how you read §6 and §2:
+
+- It has been run on **both** package managers during this project: the bench
+  MT6000 was upgraded in place to `0.6.0_rc6-r1` while still on **opkg /
+  24.10.2**, and the sibling MT3000 over **apk / 25.12.5** (the project's
+  per-arch validation table records both; that file is not on this branch). The
+  procedure documented here is the **apk / 25.12** one — a 24.10 MT6000 has to
+  be upgraded to 25.12 first, because this *runtime feed* carries no opkg
+  artifact at all (§6). That rc6 install used the per-release **asset download**
+  lane, which is a different mechanism from the feed.
+- `aarch64_cortex-a53` / `mediatek-filogic` covers the MT3000, the MT6000, the
+  Cudy WR3000 v1 and the COMFAST CF-WR632AX, so the *asset* is shared — but the
+  WR3000's 16 MB of NOR flash cannot hold the default 21 MB payload, and no
+  install has been run on the CF-WR632AX. Neither caveat applies to the MT6000
+  (128 MB NAND).
+
+### 2.2 Preconditions that must be true before this document's commands work
+
+This is the gate the rest of the document assumes. All three are *upstream* of
+the router:
+
+1. **FE2a merged** — the feed build/publish pipeline lands on the branch the
+   release is cut from.
+2. **A release is tagged and published** — a tag, and release assets attached to
+   it. A branch is not a release: `felixfelix-bot/feed` currently carries many
+   `archive/*` git tags that are branch archives, and **0 GitHub releases**.
+3. **The feed tree is published and re-fetched successfully** — §8's `curl`
+   check returns 200 for your `<channel>/<line>/<arch>/packages.adb`.
+
+Until (1)–(3) hold there is **no URL to hand a tester** (§0). The procedure
+below was executed against a local signed rehearsal feed, so it is ready the
+moment the gate opens; it has not been executed against a public one.
 
 ## 3. Install (apk, OpenWrt 25.12.x)
 
@@ -187,13 +229,63 @@ Then start it and let the init script own the process:
 /etc/init.d/tollgate-wrt start
 ```
 
-Ports and paths that matter afterwards (from the vendored `files/` tree):
+**Step 7 — prove it is actually serving, on the ports it actually serves.**
 
-| what | value |
-|---|---|
-| captive portal | TCP 2050 (`nodogsplash gatewayport`), on `br-lan` |
-| service HTTP | TCP 2121 |
-| CLI ↔ service socket | `/var/run/tollgate.sock` |
+This is the block to hand a tester, because it is the one part of the procedure
+that is easy to get wrong: **there is no `/health` endpoint on `:2121`.** The
+service registers only `/`, `/whoami`, `/ln-invoice`, `/balance`, `/usage`,
+`/session-state`, `/session/*` and `/identity*`, and Go's mux falls any unknown
+path through to the `/` handler — so `curl http://<router>:2121/health` returns
+**HTTP 200 with the same 815-byte advertisement event as `/`**, and would make a
+dead router look half-alive. Measured on a real 25.12.5 userland
+([transcript](evidence/2026-10-26-runtime-verification-x86_64.txt)):
+
+```sh
+# 1. the service answered at all: its own advertisement/details event
+wget -qO- http://127.0.0.1:2121/ | head -c 120        # want {"kind":10021,...
+wget -qO- http://127.0.0.1:2121/whoami                # want mac=<client mac>
+
+# 2. the merchant came up (not just the listener): mint-dependent routes
+wget -qO- http://127.0.0.1:2121/identity              # want {"npub":"npub1...,"ipv4":...
+wget -qO- http://127.0.0.1:2121/balance               # want {"status":1,...
+
+# 3. the portal SPA is being served
+wget -qO- http://127.0.0.1:2051/splash.html | head -5 # want <!DOCTYPE html>...Tollgate Captive Portal
+
+# 4. the CLI agrees, over the unix socket
+tollgate health                                       # want: healthy / status: ok
+```
+
+Measured answers for each of those, and the ones that are **not** liveness
+signals (`/health`, `/healthz`, `/ready`, and any other unknown path all return
+`{"kind":10021,…}`, 815 bytes, exit 0):
+
+```
+GET /          -> 815 bytes  {"kind":10021,"id":"b01ff2d8…","pubkey":"600f6d39…"
+GET /whoami    ->  21 bytes  mac=00:00:00:00:00:00
+GET /identity  -> 191 bytes  {"npub":"npub1vq8k6wv…","ipv4":"100.119.48.1",…
+GET /balance   ->  74 bytes  {"status":1,"session_active":false,"usage":0,"allotment":0,"remaining":0}
+GET /usage     ->   5 bytes  -1/-1
+GET /health    -> 815 bytes  {"kind":10021,…}   ← the / handler, NOT a health route
+```
+
+Ports and paths that matter afterwards (from the vendored `files/` tree — all
+four `LISTEN` sockets were observed on the real run):
+
+| what | where it comes from | value |
+|---|---|---|
+| service HTTP (`/`, `/whoami`, `/identity`, `/balance`, `/usage`, …) | Go service | TCP **2121**, all interfaces |
+| CLI ↔ service socket | Go service | `/var/run/tollgate.sock` (moves to `$TOLLGATE_TEST_CONFIG_DIR/tollgate.sock` only when that env var is set — the CLI prints a `WARNING` when it is) |
+| captive portal SPA (pre-auth clients) | `uhttpd.portal` (`99-tollgate-setup`) | TCP **2051**, `home=/etc/tollgate/tollgate-captive-portal-site` |
+| nodogsplash redirect stub | `90-tollgate-captive-portal-symlink` | TCP **2050** (`gatewayport`), on `br-lan` |
+| admin / LuCI | `uhttpd.main` (`99-tollgate-setup`) | TCP **8080**, `home=/www` |
+
+Two portal facts worth knowing before you debug a "blank portal": the payload
+ships `splash.html`, `balance.html`, `welcome.html` and `404.html` but **no
+`index.html`**, and `uhttpd.portal` sets `no_dirlists=1` — so `http://<router>:2051/`
+is answered by the 404 page (HTTP 200, 3,268 bytes) and the page a pre-auth
+client is actually redirected to is `/splash.html`. `curl` is not installed on a
+stock 25.12 rootfs; use `wget` or `uclient-fetch` as above.
 
 ## 4. Talking to the running service
 
@@ -256,6 +348,67 @@ version*. Because `PKG_RELEASE` owns the revision, a re-cut of identical content
 must bump `-rN` (see the README's "Version identity") — otherwise apk has no
 reason to re-install anything.
 
+### 5.1 Moving to a later feed release
+
+The feed's index is one mutable path per `(channel, line, arch)`; releases land
+in it by re-publishing that path, so "upgrading to a later release" is an
+`apk update` + `apk upgrade`, not a new repository line:
+
+```sh
+apk update                                    # re-fetch + verify the index; expect exit 0
+apk policy tollgate-wrt                        # what version is now offered, from which URL
+apk upgrade tollgate-wrt                       # package-scoped: only this package moves
+# verify (this document's §3 step 7), then:
+/etc/init.d/tollgate-wrt restart
+tollgate health                                # want: healthy / status: ok
+```
+
+- `apk upgrade tollgate-wrt` moves only this package; bare `apk upgrade` takes
+  the whole system. Measured: the package-scoped form is accepted
+  (`Usage: apk upgrade [<OPTIONS>...] [<PACKAGES>...]`) and an unknown name is a
+  real failure — `ERROR: Package 'tollgate-wrt' not found`, **exit 1**. Do not
+  swallow that exit code.
+- **`apk policy` does not show the world pin.** It lists the versions the
+  indexes offer and where each came from; the pin lives in `/etc/apk/world`.
+  Measured after pinning `jq=1.8.1-r2`: `apk policy jq` was unchanged, while
+  `/etc/apk/world` went from `jq` to `jq=1.8.1-r2`. Read the world file when you
+  need to know whether a router is pinned.
+- If the world file holds a pin (`tollgate-wrt=0.6.0_alpha2-r1`), `apk upgrade`
+  will **not** move it — release the pin first (`apk add tollgate-wrt`), or
+  install the target version explicitly.
+- To move to a *different channel* (`testing` → `stable`), rewrite the
+  repository line (§3 step 2), run `apk update`, then `apk add tollgate-wrt`.
+  apk merges indexes from every configured repository and picks the highest
+  version, so a mis-typed channel that also exists shows up as
+  `apk policy` naming the wrong URL — check that line before upgrading.
+- Moving **down** a line (25.12 → 24.10) is not a feed operation at all: there
+  is no opkg artifact (§6).
+
+### 5.2 Rollback and removal, in full
+
+```sh
+# roll back to the previous version, pinned so `apk upgrade` cannot undo it
+apk add 'tollgate-wrt=<previous-version>'
+grep tollgate-wrt /etc/apk/world     # want: tollgate-wrt=<previous-version>
+
+# later: release the pin and follow the channel again
+apk add tollgate-wrt
+grep tollgate-wrt /etc/apk/world     # want: tollgate-wrt
+
+# remove, including the world entry and the two binaries
+apk del tollgate-wrt
+ls /usr/bin/tollgate /usr/bin/tollgate-wrt        # expect: No such file or directory
+```
+
+`apk del` purges the package (measured: `Purging tollgate-wrt (… )`, exit 0,
+both binaries gone, the world entry removed). What it does **not** remove is
+anything an operator put in a package-owned directory: measured for the purge
+case, a file written by hand into the package's own `/usr/share/<pkg>/` survived
+`apk del` untouched. So removing `tollgate-wrt` leaves `/etc/tollgate/`
+(`config.json`, `install.json`, `identities.json`, `ecash/`) in place — that is
+operator data, not package payload, and a reinstall reuses the wallet and
+identity. Remove it deliberately if you want a clean identity.
+
 ## 6. opkg (24.10 and older): not supported
 
 The feed builds against OpenWrt's Go toolchain, and upstream's module requires
@@ -267,7 +420,8 @@ What was measured on a real 24.10.8 userland (opkg 38eccbb, transcript
 for the day this changes:
 
 - The line form is `src/gz <name> <base-url>` — the **directory**, not a file
-  name (opkg appends `Packages.gz` / `Packages.sig` itself).
+  name (opkg appends `Packages.gz` / `Packages.sig` itself), e.g.
+  `src/gz tollgate https://<feed-host>/testing/25.12/mipsel_24kc`.
 - With `option check_signature` set and no `Packages.sig` on the host, opkg
   prints `Signature file download failed. Remove wrong Signature file.`, then
   `* opkg_download: Failed to download …/Packages.sig, wget returned 8`, and
@@ -293,6 +447,8 @@ All rows are verbatim from the 2026-10-11 probes
 | `ERROR: unable to select packages: tollgate-wrt (no such package): required by: world[tollgate-wrt]` | no readable feed offers it: index untrusted, index unavailable, wrong arch, or not published | run §3 steps 3–4; the `apk policy` output names the source, or says nothing |
 | `dial unix /var/run/tollgate.sock: connect: connection refused` | the service is not running | `/etc/init.d/tollgate-wrt start` |
 | `Failed to connect to ubus` from `/etc/init.d/tollgate-wrt status` | no procd (container/lab userland) | check the socket and the HTTP port instead |
+| you checked `curl :2121/health`, got `200`, and the router is still dead | **there is no `/health` route** — the `/` handler answers every unknown path with the same 815-byte event | use §3 step 7: `/` + `/whoami` + `/identity` + `/balance`, then `tollgate health` over the socket |
+| `tollgate: not found` where you expected it to work | the router has no `tollgate` CLI, or you are on a host that never installed it | the CLI ships in the same package as the service; check `apk info -L tollgate-wrt` |
 
 Two rules worth repeating to anyone scripting this:
 
@@ -312,12 +468,16 @@ curl -fsS -o /dev/null -w '%{http_code}\n' https://<feed-host>/<channel>/<line>/
 sh scripts/feed-verify.sh …     # re-fetches the published index, hash-checks every package it lists
 ```
 
-and then the cheapest end-to-end proof on a real router: §3 steps 1–6, with
+and then the cheapest end-to-end proof on a real router: §3 steps 1–7, with
 `apk policy tollgate-wrt` naming the public URL rather than `lib/apk/db/installed`.
+
+Note that `curl` is **absent** from a stock OpenWrt 25.12 rootfs (measured), so
+anything you paste into a router session must use `wget` or `uclient-fetch`;
+`curl -I` in this document is a *build-host* command.
 
 ## 9. Evidence and reproduction
 
-Committed under [`docs/evidence/`](evidence/). All 2026-10-11 files were produced
+Committed under [`docs/evidence/`](evidence/). The 2026-10-11 files were produced
 on host `CobradorWave` inside a container imported from
 `openwrt-25.12.5-x86-64-rootfs.tar.gz` — i.e. a real OpenWrt 25.12.5
 (`r33051-f5dae5ece4`, x86_64) userland with real `apk-tools 3.0.5` — against a
@@ -325,7 +485,10 @@ local signed rehearsal feed on `127.0.0.1:8123`, channel `testing`, line `25.12`
 arch `x86_64`, index sha256
 `50d39d450b8ce75422be931965a7bda7ba956e6563d6dd6f6070b2268e3dcb66` (388 bytes)
 listing `tollgate-wrt-0.6.0_alpha2-r1.apk` (15,238,869 bytes) — a **local
-rehearsal build**, not the reference artifact in `records/`.
+rehearsal build**, not the reference artifact in `records/`. The two 2026-10-26
+files were produced on host `x280` in the same kind of container
+(`owrt2512:docs26`), against the built `tollgate-wrt` binary and this repo's
+packaged portal payload, with no feed involved.
 
 | file | sha256 | what it shows |
 |---|---|---|
@@ -335,6 +498,8 @@ rehearsal build**, not the reference artifact in `records/`.
 | `evidence/2026-09-12-world-pin-and-cli-transcript.txt` | `0a9dc07b126e0083…` | world-pin semantics (install/upgrade/downgrade/release) + CLI without a running service |
 | `evidence/2026-09-12-service-cli-transcript.txt` | `db1dc1c13b94eccd…` | successful install, service started by hand, `tollgate version/status/health` answers |
 | `evidence/2026-09-13-opkg-24.10-transcript.txt` | `f8ef358f071677d3…` | 24.10.8 opkg: `src/gz` line, missing `Packages.sig`, `opkg update` exit 1, `opkg list` exit 0 |
+| `evidence/2026-10-26-runtime-verification-x86_64.txt` | `13467286cb528840…` | the **runtime** side of §3 step 7 on a real 25.12.5 userland: `:2121` answers `{"kind":10021,…}`, `/health` is the `/` handler and not a health route, `/whoami` `/identity` `/balance` `/usage` answers, `:2051` portal payload served, `:8080` admin answers, `curl` absent |
+| `evidence/2026-10-26-apk-semantics-x86_64.txt` | `3381befbdffae603…` | the apk behaviours §5.1/§5.2 rely on: `apk upgrade <pkg>` is accepted and **exits 1** on an unknown name, `apk policy` does **not** show the world pin (the world file does), `apk del` removes the world entry and the indexed files but leaves operator-written files in a package-owned directory |
 
 Reproduction (the rehearsal, on a Linux host with Docker):
 
@@ -347,6 +512,13 @@ docker run --rm --network host -it owrt2512:local sh
 #   apk update && apk add tollgate-wrt
 ```
 
+The two 2026-10-26 captures are reproducible from this repo alone (no feed
+needed): stage the built binary and the packaged portal payload into a container
+and run
+[`evidence/2026-10-26-runtime-verification-x86_64.sh`](evidence/2026-10-26-runtime-verification-x86_64.sh)
+and
+[`evidence/2026-10-26-apk-semantics-x86_64.sh`](evidence/2026-10-26-apk-semantics-x86_64.sh).
+
 ### What this evidence does **not** prove
 
 - It is an **x86_64** run. The router target (`aarch64_cortex-a53` for a
@@ -358,6 +530,13 @@ docker run --rm --network host -it owrt2512:local sh
 - It does not prove anything on a **physical router** (procd, ubus, the captive
   portal on 2050, the MT6000): the container has no procd, which is why the
   service was exercised through its socket and HTTP port instead.
+- The 2026-10-26 capture stages the **packaged portal payload** and the built
+  binary by hand; it does not prove that `apk add` + the package's `postinst`
+  wire them up on a real router, and the `tollgate health` line comes from the
+  2026-09-12 transcript rather than from that container (the `tollgate` CLI
+  package was not staged). The apk-semantics capture uses `jq` as a stand-in
+  for `tollgate-wrt`, because it asserts apk's own world/policy/purge behaviour
+  rather than anything package-specific.
 
 ## See also
 

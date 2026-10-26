@@ -1,0 +1,88 @@
+== capture 2026-10-26T14:07Z host=x280 ==
+image: owrt2512:docs26 (podman container imported from openwrt-25.12.5-x86-64-rootfs.tar.gz)
+binary: /usr/bin/tollgate-wrt, 17,271,613 bytes, sha256 3c20d2ab57925dc8b8c947835f87f98d58b6cd7a458144c97d136d728ddd1c5c
+portal payload: net/tollgate-wrt/files/tollgate-captive-portal-site + net/tollgate-wrt/portal-assets/assets
+                (this repo, HEAD of docs/feed-consumption-install)
+script: 2026-10-26-runtime-verification-x86_64.sh (committed next to this transcript)
+purpose: measure the "verify what landed" block of feed-consumption-install.md —
+         which HTTP checks actually answer, and which do not exist.
+
+== environment ==
+release:  OpenWrt 25.12.5 r33051-f5dae5ece4
+arch:     x86_64
+pkg mgr:  apk-tools 3.0.5, compiled for x86_64.
+http clients present:
+  curl: ABSENT
+  wget: /usr/bin/wget
+  uclient-fetch: /bin/uclient-fetch
+nodogsplash: ABSENT
+procd/ubus:  /bin/ubus
+binary: 3c20d2ab57925dc8b8c947835f87f98d58b6cd7a458144c97d136d728ddd1c5c  17271613 bytes
+
+== start the service (no procd: run the daemon directly, as the init script would) ==
+tollgate-wrt pid=15
+listener appeared after 9s:
+tcp        0      0 :::2121                 :::*                    LISTEN
+
+== the two uhttpd instances the package configures (files/etc/uci-defaults/99-tollgate-setup) ==
+after starting uhttpd main(:8080) + portal(:2051):
+tcp        0      0 0.0.0.0:2051            0.0.0.0:*               LISTEN
+tcp        0      0 0.0.0.0:8080            0.0.0.0:*               LISTEN
+tcp        0      0 :::2121                 :::*                    LISTEN
+
+== V1  service HTTP :2121 answers the details/advertisement event ==
+$ wget -qO- http://127.0.0.1:2121/ | head -c 120
+wget_exit=0
+{"kind":10021,"id":"772c4521c62c7c5d2ee911690b2f5f128b2fddf6e0da97d4383df632b184bd79","pubkey":"141f3476b8063b8ecb0c4347
+bytes=815
+$ the same body's kind tag:
+"kind":10021
+
+== V2  there is NO /health route on :2121: a 200 there proves nothing ==
+  GET /         -> wget_exit=0 bytes=815   body[0:40]={"kind":10021,"id":"772c4521c62c7c5d2ee9
+  GET /health   -> wget_exit=0 bytes=815   body[0:40]={"kind":10021,"id":"772c4521c62c7c5d2ee9
+  GET /healthz  -> wget_exit=0 bytes=815   body[0:40]={"kind":10021,"id":"772c4521c62c7c5d2ee9
+  GET /ready    -> wget_exit=0 bytes=815   body[0:40]={"kind":10021,"id":"772c4521c62c7c5d2ee9
+  GET /nope     -> wget_exit=0 bytes=815   body[0:40]={"kind":10021,"id":"772c4521c62c7c5d2ee9
+  The mux registers only / /whoami /ln-invoice /balance /usage /session-state
+  /session/* /identity*, so every unknown path falls through to the / handler:
+  /health returns the SAME 815-byte event with exit 0 as / does. There is no
+  health endpoint to curl. (tollgate-module-basic-go src/main.go:1901-1990)
+
+== V3  the routes you CAN use as a liveness/configuration probe ==
+  GET /whoami   -> wget_exit=0 bytes=21   mac=00:00:00:00:00:00
+  GET /identity -> wget_exit=0 bytes=191  {"npub":"npub1zs0nga4cqcacajcvgdr4tjv3as873gjqhc473k7f6jqxf0dtvepqu9q8yz","ipv4":"100.77.217.1",
+  GET /balance  -> wget_exit=0 bytes=74   {"status":1,"session_active":false,"usage":0,"allotment":0,"remaining":0}
+  GET /usage    -> wget_exit=0 bytes=5    -1/-1
+  /identity answers only once the merchant exists (mint-dependent routes are
+  wrapped in requireStarted); /whoami answers even while the wallet loads.
+
+== V4  the CLI <-> service socket while the service runs ==
+ls: /var/run/tollgate.sock: No such file or directory
+  the service's own log line naming the socket it listens on:
+INFO[2026-10-26T14:07:27Z] CLI server started                            module=cli socket_path=/tmp/tg/tollgate.sock
+INFO[2026-10-26T14:07:27Z] CLI server initialized and listening on Unix socket  module=main
+  (`tollgate health` speaks to the service over that socket. This container
+   sets TOLLGATE_TEST_CONFIG_DIR, which is the ONE case where the socket
+   moves off /var/run — matching the CLI's own resolution rule. Without that
+   env var both sides use /var/run/tollgate.sock, and the tollgate CLI
+   package was not staged here, so the CLI output quoted in the doc comes
+   from the 2026-09-12 transcript.)
+
+== V5  portal SPA on :2051 ==
+  GET /                            -> wget_exit=0 bytes=3268    body[0:40]=<!DOCTYPE html><html lang="en"><head>
+  GET /splash.html                 -> wget_exit=0 bytes=872     body[0:40]=<!DOCTYPE html><html lang="en">  <head
+  GET /balance.html                -> wget_exit=0 bytes=1112    body[0:40]=<!DOCTYPE html><html lang="en">  <head
+  GET /welcome.html                -> wget_exit=0 bytes=4481    body[0:40]=<!DOCTYPE html><html lang="en"><head>
+  GET /manifest.json               -> wget_exit=0 bytes=294     body[0:40]={  "short_name": "Tollgate Portal",  "
+  GET /assets/index-DxBkINUB.js    -> wget_exit=0 bytes=431057  body[0:40]=(function(){const t=document.createEleme
+  / is not an index page: the payload ships splash.html, balance.html,
+  welcome.html, 404.html and no index.html, and uhttpd.portal sets
+  no_dirlists=1, so / is answered by the 404 handler (3268 bytes, HTTP 200).
+  The page a pre-auth client is actually redirected to is /splash.html.
+
+== V6  admin uhttpd on :8080 ==
+  GET / -> wget_exit=0 bytes=664 body[0:50]=<!DOCTYPE html><html>	<head>		<meta http-equiv=
+
+== stop ==
+done
