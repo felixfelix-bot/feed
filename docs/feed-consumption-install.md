@@ -235,9 +235,10 @@ This is the block to hand a tester, because it is the one part of the procedure
 that is easy to get wrong: **there is no `/health` endpoint on `:2121`.** The
 service registers only `/`, `/whoami`, `/ln-invoice`, `/balance`, `/usage`,
 `/session-state`, `/session/*` and `/identity*`, and Go's mux falls any unknown
-path through to the `/` handler — so `curl http://<router>:2121/health` returns
-**HTTP 200 with the same 815-byte advertisement event as `/`**, and would make a
-dead router look half-alive. Measured on a real 25.12.5 userland
+path through to the `/` handler — so `wget -qO- http://<router>:2121/health`
+returns **HTTP 200 with the same advertisement event `/` serves, byte for
+byte**, and would make a dead router look half-alive. Measured on a real
+25.12.5 userland
 ([transcript](evidence/2026-10-26-runtime-verification-x86_64.txt)):
 
 ```sh
@@ -245,33 +246,43 @@ dead router look half-alive. Measured on a real 25.12.5 userland
 wget -qO- http://127.0.0.1:2121/ | head -c 120        # want {"kind":10021,...
 wget -qO- http://127.0.0.1:2121/whoami                # want mac=<client mac>
 
-# 2. the merchant came up (not just the listener): mint-dependent routes
+# 2. the merchant has an identity, and the wallet it prices in
+#    /identity is registered only when owned_identities[0].privatekey yields a
+#    usable key. A key that does not, is FATAL at boot: the process exits and
+#    :2121 closes with it — so an answer here is proof the merchant came up.
+#    Check the SHAPE (a body starting {"npub":"), not a byte count.
 wget -qO- http://127.0.0.1:2121/identity              # want {"npub":"npub1...,"ipv4":...
 wget -qO- http://127.0.0.1:2121/balance               # want {"status":1,...
 
 # 3. the portal SPA is being served
-wget -qO- http://127.0.0.1:2051/splash.html | head -5 # want <!DOCTYPE html>...Tollgate Captive Portal
+wget -qO- http://127.0.0.1:2051/splash.html | grep -o '<title>.*</title>'  # want <title>Tollgate Captive Portal</title>
 
 # 4. the CLI agrees, over the unix socket
 tollgate health                                       # want: healthy / status: ok
 ```
 
 Measured answers for each of those, and the ones that are **not** liveness
-signals (`/health`, `/healthz`, `/ready`, and any other unknown path all return
-`{"kind":10021,…}`, 815 bytes, exit 0). The `id`/`pubkey`/`npub` values are
-per-install — yours will differ; the *shapes* and byte counts are what to match:
+signals (`/health`, `/healthz`, `/ready` and any other unknown path all return
+the `/` handler's body — byte-identical, exit 0). The `id`/`pubkey`/`npub`
+values are per-install and the byte counts are per-boot: the `/` body carries
+one `price_per_step` tag per mint the wallet came up with, so it moved between
+683, 755 and 815 bytes across boots of the same image and config, and the
+`/identity` body moves with the length of the npub and the IPv4 string. Match
+the **shapes**, never a literal length:
 
 ```
-GET /          -> 815 bytes  {"kind":10021,"id":"772c4521…","pubkey":"141f3476…
+GET /          -> {"kind":10021,"id":"…","pubkey":"…   ← one price_per_step tag per live mint
 GET /whoami    ->  21 bytes  mac=00:00:00:00:00:00
-GET /identity  -> 191 bytes  {"npub":"npub1zs0nga4…","ipv4":"100.77.217.1",…
+GET /identity  -> {"npub":"npub1…","ipv4":"100.…       ← starts exactly like this
 GET /balance   ->  74 bytes  {"status":1,"session_active":false,"usage":0,"allotment":0,"remaining":0}
 GET /usage     ->   5 bytes  -1/-1
-GET /health    -> 815 bytes  {"kind":10021,…}   ← the / handler, NOT a health route
+GET /health    -> the same body as /   ← the / handler, NOT a health route
 ```
 
-Ports and paths that matter afterwards (from the vendored `files/` tree — all
-four `LISTEN` sockets were observed on the real run):
+Ports and paths that matter afterwards (from the vendored `files/` tree; three of
+the four `LISTEN` sockets were observed on the real run — `2050` belongs to
+nodogsplash, which is not in the minimal test image, so that row is the init
+script's configuration and not an observed socket):
 
 | what | where it comes from | value |
 |---|---|---|
@@ -287,6 +298,17 @@ ships `splash.html`, `balance.html`, `welcome.html` and `404.html` but **no
 is answered by the 404 page (HTTP 200, 3,268 bytes) and the page a pre-auth
 client is actually redirected to is `/splash.html`. `curl` is not installed on a
 stock 25.12 rootfs; use `wget` or `uclient-fetch` as above.
+
+One asymmetry in `/etc/tollgate/identities.json` is worth knowing before anyone
+hand-edits it (both directions measured, §V7/V8 of the transcript): a key that
+**parses but is unusable** (`owned_identities: []`, empty string, non-hex, all
+zeros) is fatal at boot — the log ends in `Failed to create merchant …` and
+`:2121` never opens, which is loud and easy to diagnose. A file that **does not
+parse** is not fatal: the service generates a fresh merchant identity, copies the
+old file to `/etc/tollgate/config_backups/identities_<ts>_v<ver>.json`, and
+starts normally with a **different npub** and only a `WARNING` in the log. So
+before editing that file, back it up (and the 12-word seed), and compare
+`GET /identity`'s npub after the restart.
 
 ## 4. Talking to the running service
 
@@ -448,7 +470,8 @@ All rows are verbatim from the 2026-10-11 probes
 | `ERROR: unable to select packages: tollgate-wrt (no such package): required by: world[tollgate-wrt]` | no readable feed offers it: index untrusted, index unavailable, wrong arch, or not published | run §3 steps 3–4; the `apk policy` output names the source, or says nothing |
 | `dial unix /var/run/tollgate.sock: connect: connection refused` | the service is not running | `/etc/init.d/tollgate-wrt start` |
 | `Failed to connect to ubus` from `/etc/init.d/tollgate-wrt status` | no procd (container/lab userland) | check the socket and the HTTP port instead |
-| you checked `curl :2121/health`, got `200`, and the router is still dead | **there is no `/health` route** — the `/` handler answers every unknown path with the same 815-byte event | use §3 step 7: `/` + `/whoami` + `/identity` + `/balance`, then `tollgate health` over the socket |
+| you checked `wget -qO- :2121/health`, got `200`, and the router is still dead | **there is no `/health` route** — the `/` handler answers every unknown path with its own advertisement body, byte for byte | use §3 step 7: `/` + `/whoami` + `/identity` + `/balance`, then `tollgate health` over the socket |
+| service will not stay up; log ends with `Failed to create merchant … owned identity not found` / `private key is zero` / `Sign called with invalid secret key` | `/etc/tollgate/identities.json` has no usable merchant key — **fatal at boot**, so `:2121` never opens (not a missing route, a dead process) | restore the file from backup, or delete it and let the service generate a fresh merchant identity on the next start |
 | `tollgate: not found` where you expected it to work | the router has no `tollgate` CLI, or you are on a host that never installed it | the CLI ships in the same package as the service; check `apk info -L tollgate-wrt` |
 
 Two rules worth repeating to anyone scripting this:
@@ -499,7 +522,7 @@ packaged portal payload, with no feed involved.
 | `evidence/2026-09-12-world-pin-and-cli-transcript.txt` | `0a9dc07b126e0083…` | world-pin semantics (install/upgrade/downgrade/release) + CLI without a running service |
 | `evidence/2026-09-12-service-cli-transcript.txt` | `db1dc1c13b94eccd…` | successful install, service started by hand, `tollgate version/status/health` answers |
 | `evidence/2026-09-13-opkg-24.10-transcript.txt` | `f8ef358f071677d3…` | 24.10.8 opkg: `src/gz` line, missing `Packages.sig`, `opkg update` exit 1, `opkg list` exit 0 |
-| `evidence/2026-10-26-runtime-verification-x86_64.txt` | `13467286cb528840…` | the **runtime** side of §3 step 7 on a real 25.12.5 userland: `:2121` answers `{"kind":10021,…}`, `/health` is the `/` handler and not a health route, `/whoami` `/identity` `/balance` `/usage` answers, `:2051` portal payload served, `:8080` admin answers, `curl` absent |
+| `evidence/2026-10-26-runtime-verification-x86_64.txt` | `4932ff9c887dbb81…` | the **runtime** side of §3 step 7 on a real 25.12.5 userland: `:2121` answers `{"kind":10021,…}`, `/health` is the `/` handler and not a health route, `/whoami` `/identity` `/balance` `/usage` answers, `:2051` portal payload served, `:8080` admin answers, `curl` absent, and every `identities.json` state a tester can reach (unusable key = fatal at boot; a malformed file = silently replaced identity) |
 | `evidence/2026-10-26-apk-semantics-x86_64.txt` | `3381befbdffae603…` | the apk behaviours §5.1/§5.2 rely on: `apk upgrade <pkg>` is accepted and **exits 1** on an unknown name, `apk policy` does **not** show the world pin (the world file does), `apk del` removes the world entry and the indexed files but leaves operator-written files in a package-owned directory |
 
 Reproduction (the rehearsal, on a Linux host with Docker):

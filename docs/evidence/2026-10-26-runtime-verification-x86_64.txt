@@ -1,11 +1,26 @@
-== capture 2026-10-26T14:07Z host=x280 ==
+== capture 2026-10-26T17:20Z host=x280 ==
 image: owrt2512:docs26 (podman container imported from openwrt-25.12.5-x86-64-rootfs.tar.gz)
 binary: /usr/bin/tollgate-wrt, 17,271,613 bytes, sha256 3c20d2ab57925dc8b8c947835f87f98d58b6cd7a458144c97d136d728ddd1c5c
 portal payload: net/tollgate-wrt/files/tollgate-captive-portal-site + net/tollgate-wrt/portal-assets/assets
                 (this repo, HEAD of docs/feed-consumption-install)
 script: 2026-10-26-runtime-verification-x86_64.sh (committed next to this transcript)
 purpose: measure the "verify what landed" block of feed-consumption-install.md —
-         which HTTP checks actually answer, and which do not exist.
+         which HTTP checks actually answer, which do not exist, and what the
+         service does with each identities.json state a tester can end up in.
+how to read it: this file IS the script's stdout, unedited, from the committed
+         script in this directory. Re-run it and you get the same lines with
+         different per-install values (npub, ids, boot timing) — the values
+         below are one boot, and the doc quotes shapes and byte counts, not
+         these literals.
+supersedes: two earlier runs of this same script, whose transcripts asserted
+         things this run does not support. (a) The first said /identity "answers
+         only once the merchant exists (mint-dependent routes wrapped in
+         requireStarted)" — V7 shows a service that cannot build a merchant
+         does not serve at all, so "serving but /identity absent" is not an
+         observable state. (b) Both earlier revisions printed a V8 "verbatim"
+         WARNING line whose timestamp appeared in no capture — the script only
+         ever grepped a path fragment. The script now prints the whole line, so
+         the quote below is the log's own text.
 
 == environment ==
 release:  OpenWrt 25.12.5 r33051-f5dae5ece4
@@ -22,46 +37,59 @@ binary: 3c20d2ab57925dc8b8c947835f87f98d58b6cd7a458144c97d136d728ddd1c5c  172716
 == start the service (no procd: run the daemon directly, as the init script would) ==
 tollgate-wrt pid=15
 listener appeared after 9s:
-tcp        0      0 :::2121                 :::*                    LISTEN
+tcp        0      0 :::2121                 :::*                    LISTEN      
 
 == the two uhttpd instances the package configures (files/etc/uci-defaults/99-tollgate-setup) ==
-after starting uhttpd main(:8080) + portal(:2051):
-tcp        0      0 0.0.0.0:2051            0.0.0.0:*               LISTEN
-tcp        0      0 0.0.0.0:8080            0.0.0.0:*               LISTEN
-tcp        0      0 :::2121                 :::*                    LISTEN
+LISTEN sockets after starting uhttpd main(:8080) + portal(:2051):
+tcp        0      0 0.0.0.0:8080            0.0.0.0:*               LISTEN      
+tcp        0      0 0.0.0.0:2051            0.0.0.0:*               LISTEN      
+tcp        0      0 :::2121                 :::*                    LISTEN      
 
 == V1  service HTTP :2121 answers the details/advertisement event ==
 $ wget -qO- http://127.0.0.1:2121/ | head -c 120
 wget_exit=0
-{"kind":10021,"id":"772c4521c62c7c5d2ee911690b2f5f128b2fddf6e0da97d4383df632b184bd79","pubkey":"141f3476b8063b8ecb0c4347
+{"kind":10021,"id":"f259318122e7f47baff04504fdd073e2d737931fe35e3abeeec199d22d6e5bc9","pubkey":"654e800de9e61be36115e234
 bytes=815
 $ the same body's kind tag:
 "kind":10021
 
 == V2  there is NO /health route on :2121: a 200 there proves nothing ==
-  GET /         -> wget_exit=0 bytes=815   body[0:40]={"kind":10021,"id":"772c4521c62c7c5d2ee9
-  GET /health   -> wget_exit=0 bytes=815   body[0:40]={"kind":10021,"id":"772c4521c62c7c5d2ee9
-  GET /healthz  -> wget_exit=0 bytes=815   body[0:40]={"kind":10021,"id":"772c4521c62c7c5d2ee9
-  GET /ready    -> wget_exit=0 bytes=815   body[0:40]={"kind":10021,"id":"772c4521c62c7c5d2ee9
-  GET /nope     -> wget_exit=0 bytes=815   body[0:40]={"kind":10021,"id":"772c4521c62c7c5d2ee9
+  GET /         -> wget_exit=0 bytes=815   price_tags=6 body[0:40]={"kind":10021,"id":"f259318122e7f47baff0
+  GET /health   -> wget_exit=0 bytes=815   price_tags=6 body[0:40]={"kind":10021,"id":"f259318122e7f47baff0
+  GET /healthz  -> wget_exit=0 bytes=815   price_tags=6 body[0:40]={"kind":10021,"id":"f259318122e7f47baff0
+  GET /ready    -> wget_exit=0 bytes=815   price_tags=6 body[0:40]={"kind":10021,"id":"f259318122e7f47baff0
+  GET /nope     -> wget_exit=0 bytes=815   price_tags=6 body[0:40]={"kind":10021,"id":"f259318122e7f47baff0
   The mux registers only / /whoami /ln-invoice /balance /usage /session-state
-  /session/* /identity*, so every unknown path falls through to the / handler:
-  /health returns the SAME 815-byte event with exit 0 as / does. There is no
-  health endpoint to curl. (tollgate-module-basic-go src/main.go:1901-1990)
+  /session/* /identity, so every unknown path falls through to the / handler:
+  /health returns the SAME body with exit 0 as / does — byte for byte,
+  whatever that body happens to be. There is no health endpoint to curl.
+  (tollgate-module-basic-go src/main.go:1901-1992)
+  NOTE the length is not a constant, and it is not even stable across boots of
+  the same image. The body carries one price_per_step tag per mint the wallet
+  came up with, and which mints come up varies, so both the tag count and the
+  length move. Measured across boots of this image against the same config
+  (7 mints listed): 683 bytes / 4 tags, 755 / 5, 815 / 6 — the per-tag cost
+  follows the mint URL's own length, so there is no fixed byte-per-tag either.
+  Compare the SHAPE — {"kind":10021,... at the front, and /health returning
+  the byte-identical body — never a literal length.
 
 == V3  the routes you CAN use as a liveness/configuration probe ==
   GET /whoami   -> wget_exit=0 bytes=21   mac=00:00:00:00:00:00
-  GET /identity -> wget_exit=0 bytes=191  {"npub":"npub1zs0nga4cqcacajcvgdr4tjv3as873gjqhc473k7f6jqxf0dtvepqu9q8yz","ipv4":"100.77.217.1",
+  GET /identity -> wget_exit=0 bytes=192  {"npub":"npub1v48gqr0fucd7xcg4ug6dgh76xpkexvsdmcn8aqlsv46uvt5xy7pqez9h4e","ipv4":"100.113.147.1"
   GET /balance  -> wget_exit=0 bytes=74   {"status":1,"session_active":false,"usage":0,"allotment":0,"remaining":0}
   GET /usage    -> wget_exit=0 bytes=5    -1/-1
-  /identity answers only once the merchant exists (mint-dependent routes are
-  wrapped in requireStarted); /whoami answers even while the wallet loads.
+  /whoami, /balance and /usage answer on a booted service. /identity is
+  registered only when owned_identities[0].privatekey yields a usable key
+  (src/main.go:1965-1990) — see V7 for the states a tester lands in.
+  The byte count is NOT a constant either: the npub and the ipv4 string are
+  per-install. Match the SHAPE — a body that STARTS {"npub":" — never a
+  literal length, and never 'not 815' (see the V2 note on body length).
 
 == V4  the CLI <-> service socket while the service runs ==
 ls: /var/run/tollgate.sock: No such file or directory
   the service's own log line naming the socket it listens on:
-INFO[2026-10-26T14:07:27Z] CLI server started                            module=cli socket_path=/tmp/tg/tollgate.sock
-INFO[2026-10-26T14:07:27Z] CLI server initialized and listening on Unix socket  module=main
+INFO[2026-10-26T17:18:45Z] CLI server started                            module=cli socket_path=/tmp/tg/tollgate.sock
+INFO[2026-10-26T17:18:45Z] CLI server initialized and listening on Unix socket  module=main
   (`tollgate health` speaks to the service over that socket. This container
    sets TOLLGATE_TEST_CONFIG_DIR, which is the ONE case where the socket
    moves off /var/run — matching the CLI's own resolution rule. Without that
@@ -76,6 +104,12 @@ INFO[2026-10-26T14:07:27Z] CLI server initialized and listening on Unix socket  
   GET /welcome.html                -> wget_exit=0 bytes=4481    body[0:40]=<!DOCTYPE html><html lang="en"><head>
   GET /manifest.json               -> wget_exit=0 bytes=294     body[0:40]={  "short_name": "Tollgate Portal",  "
   GET /assets/index-DxBkINUB.js    -> wget_exit=0 bytes=431057  body[0:40]=(function(){const t=document.createEleme
+  the check the doc gives a tester (title, not the DOCTYPE — the payload
+  is not minified, so line 1 of splash.html is the doctype and the title
+  sits further down):
+  $ wget -qO- http://127.0.0.1:2051/splash.html | grep -o "<title>.*</title>"
+  <title>Tollgate Captive Portal</title>
+  grep_exit=0
   / is not an index page: the payload ships splash.html, balance.html,
   welcome.html, 404.html and no index.html, and uhttpd.portal sets
   no_dirlists=1, so / is answered by the 404 handler (3268 bytes, HTTP 200).
@@ -83,6 +117,46 @@ INFO[2026-10-26T14:07:27Z] CLI server initialized and listening on Unix socket  
 
 == V6  admin uhttpd on :8080 ==
   GET / -> wget_exit=0 bytes=664 body[0:50]=<!DOCTYPE html><html>	<head>		<meta http-equiv=
+
+== V7  each identities.json state a tester can end up in ==
+  Same binary, fresh config dir, ONE service at a time: the previous case is
+  killed and port 2121 confirmed free before the next starts. (An earlier run
+  of this script read 0s in that column because the previous daemon was still
+  up — which is why every case now waits for the port to drain.)
+  no identities.json (stock first boot)      listener +9s  GET /identity exit=0 bytes=192  {"npub":"npub1unxzxq9uawgh5ury9a4upvkmqlae
+  owned_identities: []                       NO listener  Failed to create merchant                     error="failed to create advertisement: merchant identity not found: owned identity not found: merchant" module=main
+  privatekey: empty string                   NO listener  Failed to create merchant                     error="failed to create advertisement: Error signing advertisement event: private key is zero" module=main
+  privatekey: not hex                        NO listener  Failed to create merchant                     error="failed to create advertisement: Error signing advertisement event: Sign called with invalid secret key 'zzzz': encoding/hex: invalid byte: U+007A 'z'" module=main
+  privatekey: all zeros                      NO listener  Failed to create merchant                     error="failed to create advertisement: Error signing advertisement event: private key is zero" module=main
+  => reading the column: every state either SERVES with /identity working,
+     or the process exits and takes :2121 with it. There is no observable
+     state where the service runs but the /identity route is absent.
+  => and note the second footgun (measured separately): a malformed or
+     wrong-version identities.json is NOT fatal — it is silently replaced
+     with a freshly generated identity and the old file is copied to
+     /etc/tollgate/config_backups/identities_<ts>_v<ver>.json. The npub
+     changes. A tester who hand-edits that file and mistypes it loses the
+     merchant identity on the next start, with only a Warn in the log.
+
+== V8  what a malformed identities.json actually does (identity loss) ==
+  Known key in the file, boot, record the npub; then truncate the file and
+  boot again. This is the state a tester lands in after a bad hand-edit.
+  key written by hand: c767c5ded34207f148c5c7826e3082ed01554a418d99bcdf93002ddd1cc45942
+  npub before: "npub":"npub1xrerd6gyxhzhhhxt2xjezsaskxefny3t0lsc4eq2gx8jc02x5thq785hju"
+  npub after:  "npub":"npub1muklqltxms3230emyzmc5weknw2yxa5qjl69rse5qwcd6qsms4qspv76gl"
+  key now in identities.json: b03c0b5f6a1ce931a3b2a125ff61f15a74ca9358d29e3ea87d8150a1a27b29a3
+  log lines naming the replacement (verbatim, both from the same boot log):
+    WARNING: Invalid 'identities' config file found. Backed up to /etc/tollgate/config_backups/identities_2026-10-26T17-20-57Z_v0.0.1.json
+    identity: /identity and /identity/reveal-seed routes registered  module=main
+  (the WARNING comes from the plain logger before the service is up; it is the
+   only signal a tester gets — a WARNING, not an error)
+  backups written (hardcoded /etc/tollgate/config_backups, NOT the test dir):
+    -rw-------    1 root     root            27 Oct 26 17:20 identities_2026-10-26T17-20-57Z_v0.0.1.json
+  the original key is not in the backup (it was never written by the service):
+    absent — the hand-written key is gone from the box
+  => so: a parse-level mistake costs the identity silently. Warn testers to
+     back up /etc/tollgate/identities.json (and the 12-word seed) before
+     editing it, and to compare the npub after a restart.
 
 == stop ==
 done
